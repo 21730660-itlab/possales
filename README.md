@@ -7,8 +7,9 @@ A complete point-of-sale system for an electronics shop. It runs on Windows with
 
 ## Quick start (Windows)
 
-**Easiest:** download `POS_Setup_<version>.exe` (GitHub → Actions → latest "Build Windows
-installer" run → Artifacts), double-click it, then start **Electronics POS** from the desktop.
+**Easiest:** download the installer from the
+**[latest release](https://github.com/21730660-itlab/possales/releases/latest)**
+(`POS_Setup_<version>.exe`), double-click it, then start **Electronics POS** from the desktop.
 
 **Or run it with Python:**
 

@@ -4,10 +4,8 @@
 
 ### Option A — Installer (recommended, no Python needed)
 
-1. Download **`POS_Setup_<version>.exe`**:
-   - open the repository on GitHub → **Actions** → the latest green **"Build Windows installer"** run
-     → **Artifacts** → `POS_Setup_…`. It downloads as a zip; unzip it to get the `.exe`.
-   - or, if a release exists: **Releases** → download `POS_Setup_….exe`.
+1. Download **`POS_Setup_<version>.exe`** from the
+   **[latest release](https://github.com/21730660-itlab/possales/releases/latest)**.
 2. Double-click it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**.
    This warning appears because the installer is not code-signed; it is expected.
 3. Click **Next** through the steps and keep **"Create a desktop shortcut"** ticked.
@@ -17,6 +15,10 @@ The program is installed in `C:\Program Files\Electronics POS`.
 Your shop data is kept in **`C:\ProgramData\ElectronicsPOS`**. Uninstalling does **not** delete it.
 
 **Updating:** run the newer `POS_Setup_….exe` over the old one. Your data stays in place.
+
+**Publishing a new version (for whoever maintains the code):** raise `__version__` in
+`pos/__init__.py`, push, then on GitHub open **Actions → Build Windows installer → Run workflow**
+and enter the new tag (e.g. `v1.2.0`). The installer is built, tested and published as a release.
 
 ### Option B — Run with Python
 
