@@ -1,0 +1,4 @@
+# The POS uses only the Python standard library (tkinter + sqlite3).
+# Optional extras:
+# pywin32      -> raw ESC/POS printing to a thermal receipt printer + cash drawer kick (Windows)
+# pyinstaller  -> build a stand-alone POS.exe (see build_exe.bat)
