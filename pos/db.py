@@ -347,15 +347,23 @@ def money(value) -> float:
     return float(Decimal(str(value or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+# The Windows installer writes this file next to POS.exe. Program Files is read-only for
+# normal users, so an installed copy keeps its data in C:\ProgramData\ElectronicsPOS instead.
+INSTALLED_MARKER = "pos_installed.flag"
+
+
 def app_data_dir() -> str:
     """Folder that holds the database, receipts and backups."""
     base = os.environ.get("POS_DATA_DIR")
     if not base:
         if getattr(sys, "frozen", False):  # running as a PyInstaller .exe
             root = os.path.dirname(sys.executable)
+            if os.path.exists(os.path.join(root, INSTALLED_MARKER)):
+                program_data = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
+                base = os.path.join(program_data, "ElectronicsPOS")
         else:
             root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        base = os.path.join(root, "data")
+        base = base or os.path.join(root, "data")
     os.makedirs(base, exist_ok=True)
     return base
 

@@ -3,7 +3,14 @@
 A complete point-of-sale system for an electronics shop. It runs on Windows with Python and needs
 **no extra packages**: it uses only Tkinter and SQLite, which come with Python.
 
+**➡ Full installation and shop setup instructions: [SETUP.md](SETUP.md)**
+
 ## Quick start (Windows)
+
+**Easiest:** download `POS_Setup_<version>.exe` (GitHub → Actions → latest "Build Windows
+installer" run → Artifacts), double-click it, then start **Electronics POS** from the desktop.
+
+**Or run it with Python:**
 
 1. Install **Python 3.10 or newer** from <https://www.python.org/downloads/>. During setup, tick
    **"Add python.exe to PATH"**.
@@ -12,8 +19,9 @@ A complete point-of-sale system for an electronics shop. It runs on Windows with
 4. Optional: go to **Settings → Load sample electronics data** to try the system with demo products.
 5. Go to **Settings** and enter your shop name, address, tax rate, currency and exchange rate.
 
-To install on a till PC that has no Python, run **`build_exe.bat`** once. It builds `dist\POS.exe`,
-which you can copy to the shop computer.
+To build the installer yourself, run **`build_installer.bat`** (needs Python and the free
+[Inno Setup 6](https://jrsoftware.org/isdl.php)). It creates `dist\POS_Setup_<version>.exe`.
+For a single portable `POS.exe` with no installer, run **`build_exe.bat`**.
 
 ## Features
 
@@ -113,17 +121,18 @@ Browser labels support Arabic product names. The direct ZPL/TSPL modes print Eng
 
 ## Data
 
-Everything is stored in the `data` folder next to the program:
+Everything is stored in the data folder — `C:\ProgramData\ElectronicsPOS` when installed with the
+installer, or the `data` folder next to the program otherwise:
 
 | Path | Contents |
 |---|---|
-| `data/pos.db` | the database |
-| `data/backups/` | automatic backups |
-| `data/receipts/` | a text copy of every receipt / report |
-| `data/labels/` | the last printed labels |
-| `data/error.log` | details of unexpected errors |
+| `pos.db` | the database |
+| `backups/` | automatic backups |
+| `receipts/` | a text copy of every receipt / report |
+| `labels/` | the last printed labels |
+| `error.log` | details of unexpected errors |
 
-Copy the whole `data` folder to move the shop to another PC.
+Copy the whole data folder to move the shop to another PC.
 
 ## Development
 

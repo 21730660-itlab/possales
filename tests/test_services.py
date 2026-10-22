@@ -349,6 +349,26 @@ class BarcodeTests(BaseCase):
         self.assertIn("ZPL", msg)
 
 
+class DataFolderTests(unittest.TestCase):
+    def test_installed_vs_portable(self):
+        import sys
+        from unittest import mock
+        from pos import db as dbmod
+        with tempfile.TemporaryDirectory() as tmp:
+            exe_dir = os.path.join(tmp, "Electronics POS")
+            os.makedirs(exe_dir)
+            env = {k: v for k, v in os.environ.items() if k != "POS_DATA_DIR"}
+            env["PROGRAMDATA"] = os.path.join(tmp, "ProgramData")
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch.object(sys, "frozen", True, create=True), \
+                    mock.patch.object(sys, "executable", os.path.join(exe_dir, "POS.exe")):
+                # Portable copy: data next to the program.
+                self.assertEqual(dbmod.app_data_dir(), os.path.join(exe_dir, "data"))
+                # Installed copy: data in ProgramData (Program Files is read-only).
+                open(os.path.join(exe_dir, dbmod.INSTALLED_MARKER), "w").close()
+                self.assertEqual(dbmod.app_data_dir(), os.path.join(tmp, "ProgramData", "ElectronicsPOS"))
+
+
 class BackupTests(BaseCase):
     def test_backup_restore(self):
         path = os.path.join(self.tmp.name, "backup.db")

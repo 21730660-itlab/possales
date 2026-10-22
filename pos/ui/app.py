@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tkinter as tk
 import traceback
 from datetime import datetime
@@ -78,11 +79,23 @@ class App(tk.Tk):
         except tk.TclError:
             pass
         setup_theme(self)
+        self._set_icon()
         self.report_callback_exception = self.on_error
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.container = ttk.Frame(self)
         self.container.pack(fill="both", expand=True)
         self.show_login()
+
+    def _set_icon(self):
+        # Inside a PyInstaller build, bundled files live in sys._MEIPASS.
+        root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))))
+        icon = os.path.join(root, "assets", "pos.ico")
+        if sys.platform.startswith("win") and os.path.exists(icon):
+            try:
+                self.iconbitmap(default=icon)
+            except tk.TclError:
+                pass
 
     # ------------------------------------------------------------ error handling
     def on_error(self, exc_type, exc, tb):

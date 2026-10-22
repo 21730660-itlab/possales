@@ -1,0 +1,2 @@
+This file tells Electronics POS that it was installed with the Windows installer,
+so it stores the shop data in C:\ProgramData\ElectronicsPOS. Do not delete it.

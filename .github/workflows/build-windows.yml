@@ -1,0 +1,84 @@
+name: Build Windows installer
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # needed to attach the installer to a release when a v* tag is pushed
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: python -m unittest -v
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pyinstaller pywin32
+
+      - name: Build POS.exe
+        run: >
+          python -m PyInstaller --noconfirm --windowed --name POS
+          --icon assets/pos.ico --add-data "assets/pos.ico;assets"
+          --hidden-import win32print --hidden-import win32api main.py
+
+      - name: Check that POS.exe starts
+        shell: pwsh
+        run: |
+          $env:POS_DATA_DIR = "$env:RUNNER_TEMP\pos-smoke"
+          $p = Start-Process -FilePath "dist\POS\POS.exe" -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) { throw "POS.exe exited early with code $($p.ExitCode)" }
+          if (-not (Test-Path "$env:POS_DATA_DIR\pos.db")) { throw "POS.exe did not create its database" }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "POS.exe started and created its database."
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: echo "version=$(python -c 'import pos; print(pos.__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" installer\setup.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+
+      - name: Check the installer installs and runs
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\POS_Setup_*.exe | Select-Object -First 1
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer failed with code $($p.ExitCode)" }
+          $exe = "$env:ProgramFiles\Electronics POS\POS.exe"
+          if (-not (Test-Path $exe)) { throw "POS.exe was not installed" }
+          $app = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 20
+          if ($app.HasExited) { throw "Installed POS.exe exited early" }
+          if (-not (Test-Path "$env:ProgramData\ElectronicsPOS\pos.db")) { throw "Database not in ProgramData" }
+          Stop-Process -Id $app.Id -Force
+          Write-Host "Installed POS.exe runs and stores data in ProgramData."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: POS_Setup_${{ steps.version.outputs.version }}
+          path: dist/POS_Setup_*.exe
+
+      - name: Attach installer to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/POS_Setup_*.exe
