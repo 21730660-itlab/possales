@@ -5,6 +5,11 @@ on:
     branches: ["**"]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publish a release with this tag (e.g. v1.1.0). Leave empty to only build."
+        required: false
+        default: ""
 
 permissions:
   contents: write  # needed to attach the installer to a release when a v* tag is pushed
@@ -78,7 +83,19 @@ jobs:
           path: dist/POS_Setup_*.exe
 
       - name: Attach installer to release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          # A manual run creates the tag on the commit it built.
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Electronics POS ${{ steps.version.outputs.version }}
           files: dist/POS_Setup_*.exe
+          body: |
+            ## Install
+            1. Download **POS_Setup_${{ steps.version.outputs.version }}.exe** below.
+            2. Double-click it. If Windows says "Windows protected your PC", click **More info → Run anyway**.
+            3. Start **Electronics POS** from the desktop and sign in with `admin` / `admin`.
+
+            No Python needed. Shop data is kept in `C:\ProgramData\ElectronicsPOS` and survives updates.
+            Full instructions: [SETUP.md](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/SETUP.md)
