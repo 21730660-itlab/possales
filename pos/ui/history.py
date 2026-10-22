@@ -124,7 +124,8 @@ class ReturnDialog(Dialog):
         ttk.Button(opts, text="Return everything", command=self.all).pack(side="left")
         ttk.Label(opts, text="   Refund by").pack(side="left")
         self.method = tk.StringVar(value="Cash")
-        methods = [m for m in sales.REFUND_METHODS if m != "Account" or self.has_customer]
+        methods = [m for m in sales.refund_methods(self.db.get_settings())
+                   if m != "Account" or self.has_customer]
         ttk.Combobox(opts, textvariable=self.method, values=methods, state="readonly", width=14).pack(
             side="left", padx=6)
         self.restock = tk.BooleanVar(value=True)

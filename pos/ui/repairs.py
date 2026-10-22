@@ -4,7 +4,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ..services import operations, receipts
+from ..services import operations, receipts, sales
 from .app import View
 from .sales import CustomerPicker
 from .widgets import DataTable, SearchBar, TextPreview, ask_form, toolbar
@@ -93,7 +93,7 @@ class RepairsView(View):
         deposit = ask_form(self, "Deposit", [
             {"key": "amount", "label": "Deposit received now (0 = none)", "type": "float", "default": "0"},
             {"key": "method", "label": "Method", "type": "combo", "default": "Cash",
-             "values": ["Cash", "Card", "Bank Transfer", "Mobile Wallet"]}], ok_text="OK")
+             "values": sales.tender_methods(self.db.get_settings())}], ok_text="OK")
         if deposit and deposit["amount"] > 0:
             operations.add_repair_payment(self.db, repair_id, deposit["amount"], deposit["method"],
                                           self.app.user["id"], self.app.current_shift_id())
@@ -131,7 +131,7 @@ class RepairsView(View):
         res = ask_form(self, f"Payment — {rep['ticket_no']}", [
             {"key": "amount", "label": "Amount", "type": "float", "default": f"{due:.2f}", "required": True},
             {"key": "method", "label": "Method", "type": "combo", "default": "Cash",
-             "values": ["Cash", "Card", "Bank Transfer", "Mobile Wallet"]}], ok_text="Receive")
+             "values": sales.tender_methods(self.db.get_settings())}], ok_text="Receive")
         if res:
             operations.add_repair_payment(self.db, rep["id"], res["amount"], res["method"],
                                           self.app.user["id"], self.app.current_shift_id())

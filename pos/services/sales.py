@@ -8,8 +8,26 @@ from datetime import date, datetime
 
 from ..db import Database, POSError, money, now, setting_bool, setting_float
 
-PAYMENT_METHODS = ("Cash", "Card", "Bank Transfer", "Mobile Wallet", "Cheque", "Account", "Points")
-REFUND_METHODS = ("Cash", "Card", "Bank Transfer", "Mobile Wallet", "Account")
+# Cash, Account (customer credit) and Points are built in; the others come from Settings.
+BUILTIN_METHODS = ("Cash", "Account", "Points")
+
+
+def custom_methods(settings: dict) -> list[str]:
+    names = [m.strip() for m in settings.get("payment_methods", "").split(",")]
+    return [m for m in dict.fromkeys(names) if m and m not in BUILTIN_METHODS]
+
+
+def tender_methods(settings: dict) -> list[str]:
+    """Ways to take money that are not tied to a customer account (repairs, debt payments)."""
+    return ["Cash"] + custom_methods(settings)
+
+
+def payment_methods(settings: dict) -> list[str]:
+    return tender_methods(settings) + ["Account", "Points"]
+
+
+def refund_methods(settings: dict) -> list[str]:
+    return tender_methods(settings) + ["Account"]
 
 
 @dataclass
@@ -152,7 +170,7 @@ def checkout(db: Database, cart: Cart, payments: list[dict], user_id: int,
     for p in payments:
         if p["amount"] < 0:
             raise POSError("Payment amounts cannot be negative.")
-        if p["method"] not in PAYMENT_METHODS:
+        if p["method"] not in payment_methods(settings):
             raise POSError(f"Unknown payment method: {p['method']}")
     paid = money(sum(p["amount"] for p in payments))
     non_cash = money(sum(p["amount"] for p in payments if p["method"] != "Cash"))
@@ -367,7 +385,7 @@ def process_return(db: Database, sale_id: int, items: dict[int, int], reason: st
     items = {int(k): int(v) for k, v in items.items() if int(v) > 0}
     if not items:
         raise POSError("Select at least one item to return.")
-    if refund_method not in REFUND_METHODS:
+    if refund_method not in refund_methods(db.get_settings()):
         raise POSError(f"Unknown refund method: {refund_method}")
     sale = db.one("SELECT * FROM sales WHERE id = ?", (sale_id,))
     if not sale:

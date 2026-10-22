@@ -3,8 +3,8 @@ import tempfile
 import unittest
 
 from pos.db import Database, POSError
-from pos.services import (auth, catalog, operations, people, purchasing, receipts, reports,
-                          sales)
+from pos.services import (auth, barcodes, catalog, operations, people, purchasing, receipts,
+                          reports, sales)
 
 
 class BaseCase(unittest.TestCase):
@@ -267,6 +267,86 @@ class ReportTests(BaseCase):
         path = os.path.join(self.tmp.name, "r.csv")
         self.assertEqual(reports.write_csv(path, ["day", "total"], reports.daily_sales(self.db, day, day)), 1)
         self.assertTrue(reports.dashboard(self.db, day)["transactions"])
+
+
+class PaymentMethodTests(BaseCase):
+    def test_custom_methods(self):
+        self.db.set_settings({"payment_methods": "Whish Money, OMT, Cash, Whish Money"})
+        settings = self.db.get_settings()
+        self.assertEqual(sales.payment_methods(settings),
+                         ["Cash", "Whish Money", "OMT", "Account", "Points"])
+        cart = sales.Cart()
+        cart.add_product(self.cable, 2)
+        with self.assertRaises(POSError):  # Card was removed from the list
+            sales.checkout(self.db, cart, [{"method": "Card", "amount": 11}], self.uid)
+        sale_id = sales.checkout(self.db, cart, [{"method": "Whish Money", "amount": 11}], self.uid)
+        self.assertEqual(sales.get_sale(self.db, sale_id)["payments"][0]["method"], "Whish Money")
+        item = sales.returnable_items(self.db, sale_id)[0]
+        sales.process_return(self.db, sale_id, {item["id"]: 1}, "", "OMT", True, self.uid)
+
+
+class ArabicReceiptTests(BaseCase):
+    def sale(self):
+        cart = sales.Cart()
+        cart.add_product(self.phone, serial_no="IMEI-9")
+        return sales.checkout(self.db, cart, [{"method": "Cash", "amount": 400}], self.uid)
+
+    def test_languages(self):
+        self.db.set_settings({"shop_name_ar": "متجر الإلكترونيات"})
+        sale_id = self.sale()
+        english = receipts.sale_receipt(self.db, sale_id)
+        self.assertNotIn("المجموع", english)
+        self.db.set_settings({"receipt_language": "ar"})
+        arabic = receipts.sale_receipt(self.db, sale_id)
+        self.assertIn("المجموع", arabic)
+        self.assertIn("متجر الإلكترونيات", arabic)
+        self.assertIn("نقداً", arabic)
+        self.assertNotIn("Subtotal", arabic)
+        self.assertFalse(receipts.is_plain(arabic))
+        self.db.set_settings({"receipt_language": "both"})
+        both = receipts.sale_receipt(self.db, sale_id)
+        self.assertIn("Subtotal المجموع الفرعي", both)
+        self.assertTrue(all(len(line) <= 42 for line in both.splitlines()))
+        rep = operations.create_repair(self.db, {"device": "Phone", "issue": "Screen"}, self.uid)
+        self.assertIn("مستلم", receipts.repair_ticket(self.db, rep))
+        path = receipts.save_text(arabic, "ar_test")
+        with open(path, encoding="utf-8-sig") as fh:
+            self.assertEqual(fh.read(), arabic)
+
+
+class BarcodeTests(BaseCase):
+    def test_code128_checksum(self):
+        # "PJJ123C" in set B: (104 + 48*1 + 42*2 + 42*3 + 17*4 + 18*5 + 19*6 + 35*7) % 103 = 55.
+        values = barcodes.code128_values("PJJ123C")
+        self.assertEqual(values[0], barcodes.START_B)
+        self.assertEqual(values[-2], 55)
+        self.assertEqual(barcodes.code128_values("123456")[:4], [barcodes.START_C, 12, 34, 56])
+        odd = barcodes.code128_values("12345")
+        self.assertEqual(odd[:5], [barcodes.START_C, 12, 34, barcodes.CODE_B, ord("5") - 32])
+        with self.assertRaises(POSError):
+            barcodes.code128_values("هاتف")
+
+    def test_generate_and_labels(self):
+        catalog.save_product(self.db, {"sku": "NB1", "name": "سماعة بلوتوث", "sell_price": 20})
+        self.assertEqual(catalog.assign_missing_barcodes(self.db), 1)
+        product, _ = catalog.find_by_code(self.db, "NB1")
+        code = product["barcode"]
+        self.assertEqual(len(code), 13)
+        self.assertEqual(code[-1], barcodes.ean13_check_digit(code[:12]))
+        self.assertEqual(catalog.next_internal_barcode(self.db)[:12], "200000000002")
+        items = barcodes.label_items(self.db, {product["id"]: 2, self.cable["id"]: 1})
+        page = barcodes.labels_html(items, self.db.get_settings(), sheet=True)
+        self.assertEqual(page.count('class="label"'), 3)
+        self.assertIn("سماعة بلوتوث", page)
+        zpl = barcodes.labels_zpl(items, self.db.get_settings())
+        self.assertIn(f"^FD{code}^FS", zpl)
+        self.assertIn("^PQ2^XZ", zpl)
+        tspl = barcodes.labels_tspl(items, self.db.get_settings())
+        self.assertIn('"128"', tspl)
+        self.assertIn("PRINT 1,2", tspl)
+        self.db.set_settings({"label_format": "zpl"})
+        msg = barcodes.print_labels(self.db, {self.cable["id"]: 1})
+        self.assertIn("ZPL", msg)
 
 
 class BackupTests(BaseCase):

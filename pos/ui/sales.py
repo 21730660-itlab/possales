@@ -7,8 +7,8 @@ from tkinter import messagebox, ttk
 from ..db import POSError, money, setting_bool, setting_float
 from ..services import catalog, operations, people, receipts, sales
 from .app import View
-from .widgets import (COLORS, FONT_FAMILY, DataTable, Dialog, SearchBar, TextPreview, ask_form,
-                      ask_value, fmt_money, parse_float, require_permission, toolbar)
+from .widgets import (COLORS, FONT_FAMILY, DataTable, Dialog, FlowFrame, SearchBar, TextPreview,
+                      ask_form, ask_value, fmt_money, parse_float, require_permission, toolbar)
 
 SHORTCUTS = ("Enter: add scanned code   F2: qty   F3: find product   F4: line discount   "
              "F5: price   F6: order discount   F7: customer   F8: hold   F9: recall   "
@@ -657,13 +657,13 @@ class PaymentDialog(Dialog):
             ttk.Label(top, text=f"{self.alt_code} {total * self.rate:,.0f}   (rate {self.rate:,.0f})",
                       style="CardTitle.TLabel", font=(FONT_FAMILY, 13)).pack(anchor="w")
 
-        methods = [m for m in sales.PAYMENT_METHODS if m not in ("Account", "Points") or self.customer]
+        methods = [m for m in sales.payment_methods(self.settings)
+                   if m not in ("Account", "Points") or self.customer]
         self.method = tk.StringVar(value="Cash")
-        mf = ttk.Frame(self.body)
+        mf = FlowFrame(self.body, gap=12, height=28)  # wraps when the shop has many methods
         mf.pack(fill="x", pady=(12, 4))
         for m in methods:
-            ttk.Radiobutton(mf, text=m, variable=self.method, value=m,
-                            command=self._method_changed).pack(side="left", padx=(0, 10))
+            ttk.Radiobutton(mf, text=m, variable=self.method, value=m, command=self._method_changed)
         if self.customer:
             pv = setting_float(self.settings, "loyalty_point_value")
             ttk.Label(self.body, style="Muted.TLabel",
@@ -744,7 +744,7 @@ class PaymentDialog(Dialog):
             self.complete_btn.state(["disabled"])
         else:
             self.status.configure(text=f"Change: {fmt_money(-rem, self.sym)}", foreground=COLORS["success"])
-            alt = f"Change in {self.alt_code}: {-rem * self.rate:,.0f}" if self.show_alt else ""
+            alt = f"Change in {self.alt_code}: {max(0.0, -rem) * self.rate:,.0f}" if self.show_alt else ""
             self.complete_btn.state(["!disabled"])
         self.alt_status.configure(text=alt)
         self.list.set_rows([dict(p, id=i) for i, p in enumerate(self.payments)])

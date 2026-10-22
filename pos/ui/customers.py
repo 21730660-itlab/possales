@@ -86,7 +86,7 @@ class CustomersView(View):
             {"key": "amount", "label": f"Amount (owes {fmt_money(row['balance'], self.currency)})",
              "type": "float", "required": True, "default": f"{max(row['balance'], 0):.2f}"},
             {"key": "method", "label": "Method", "type": "combo",
-             "values": ["Cash", "Card", "Bank Transfer", "Mobile Wallet", "Cheque"], "default": "Cash"},
+             "values": sales.tender_methods(self.db.get_settings()), "default": "Cash"},
             {"key": "notes", "label": "Notes"}], ok_text="Receive")
         if res:
             shift_id = self.app.current_shift_id()

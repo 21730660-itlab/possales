@@ -7,6 +7,7 @@ from tkinter import messagebox, ttk
 from ..db import POSError, money
 from ..services import catalog, people, purchasing, receipts
 from .app import View
+from .products import LabelDialog
 from .sales import ProductPicker
 from .widgets import (FONT_FAMILY, DataTable, Dialog, TextPreview, ask_form, confirm, fmt_money,
                       parse_int, toolbar)
@@ -21,7 +22,8 @@ class PurchasesView(View):
         bar = ttk.Frame(self)
         bar.pack(fill="x", pady=(0, 8))
         toolbar(bar, [("+ New purchase order", self.new, "Accent.TButton"), ("Receive stock", self.receive),
-                      ("View / print", self.view), ("Cancel order", self.cancel_po),
+                      ("View / print", self.view), ("🏷 Print labels", self.labels),
+                      ("Cancel order", self.cancel_po),
                       None, ("Reorder low stock", self.reorder)]).pack(side="left")
         ttk.Label(bar, text="Status").pack(side="left", padx=(16, 4))
         self.status = tk.StringVar(value="All")
@@ -78,6 +80,19 @@ class PurchasesView(View):
         text = po_text(self.db, row["id"])
         TextPreview(self, row["po_no"], text, width=60,
                     on_print=lambda: receipts.print_text(self.db, text, row["po_no"])).show()
+
+    def labels(self):
+        """Barcode labels for everything received on the selected order."""
+        row = self.selected()
+        if not row:
+            return
+        copies = {}
+        for item in purchasing.get_po(self.db, row["id"])["items"]:
+            copies[item["product_id"]] = copies.get(item["product_id"], 0) + item["received_qty"]
+        if not any(copies.values()):
+            messagebox.showinfo(self.title, "Nothing has been received on this order yet.", parent=self)
+            return
+        LabelDialog(self, self.app, list(copies.items())).show()
 
     def cancel_po(self):
         row = self.selected()

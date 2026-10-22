@@ -320,6 +320,17 @@ DEFAULT_SETTINGS = {
     "allow_negative_stock": "0",
     "require_open_shift": "1",
     "return_days_limit": "14",
+    "payment_methods": "Card, Bank Transfer, Mobile Wallet, Cheque",
+    "receipt_language": "en",
+    "shop_name_ar": "",
+    "shop_address_ar": "",
+    "receipt_footer_ar": "شكراً لتسوقكم معنا!\nيرجى الاحتفاظ بالإيصال للكفالة.",
+    "label_format": "html_roll",
+    "label_printer_name": "",
+    "label_width_mm": "50",
+    "label_height_mm": "25",
+    "label_show_price": "1",
+    "label_show_shop": "1",
 }
 
 

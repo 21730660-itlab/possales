@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 
 from ..db import Database, POSError, money, now
+from .barcodes import ean13_check_digit
 
 LOOKUP_TABLES = ("categories", "brands")
 
@@ -193,6 +194,36 @@ def next_sku(db: Database) -> str:
         if not db.one("SELECT 1 FROM products WHERE sku = ?", (sku,)):
             return sku
         n += 1
+
+
+def next_internal_barcode(db: Database) -> str:
+    """Next free in-store EAN-13 style code (prefix 20 is reserved for in-store use)."""
+    rows = db.query("SELECT barcode FROM products WHERE barcode LIKE '20%' AND length(barcode) = 13")
+    n = max((int(r["barcode"][2:12]) for r in rows if r["barcode"].isdigit()), default=0) + 1
+    while True:
+        first12 = f"20{n:010d}"
+        code = first12 + ean13_check_digit(first12)
+        if not db.one("SELECT 1 FROM products WHERE barcode = ?", (code,)):
+            return code
+        n += 1
+
+
+def assign_missing_barcodes(db: Database, product_ids=None, user_id=None) -> int:
+    """Give every (or each listed) product without a barcode a new in-store barcode."""
+    sql = "SELECT id FROM products WHERE (barcode IS NULL OR barcode = '')"
+    params: list = []
+    if product_ids is not None:
+        ids = [int(i) for i in product_ids] or [0]
+        sql += " AND id IN (%s)" % ",".join("?" * len(ids))
+        params = ids
+    count = 0
+    with db.transaction():
+        for row in db.query(sql, params):
+            db.update("products", row["id"], {"barcode": next_internal_barcode(db), "updated_at": now()})
+            count += 1
+        if count:
+            db.log(user_id, "product.barcodes", f"generated {count}")
+    return count
 
 
 def set_active(db: Database, product_id: int, active: bool, user_id=None):

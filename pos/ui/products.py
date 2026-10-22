@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from ..db import POSError
-from ..services import catalog, people
+from ..services import barcodes, catalog, people
 from .app import View
 from .widgets import (DataTable, Dialog, SearchBar, ask_form, ask_value, confirm, info,
                       toolbar)
@@ -42,6 +42,7 @@ class ProductsView(View):
             ("Serial numbers", self.serials), ("History", self.history), None,
             ("Categories", lambda: self.lookups("categories")),
             ("Brands", lambda: self.lookups("brands")), None,
+            ("🏷 Print labels", self.print_labels), ("Generate missing barcodes", self.gen_barcodes), None,
             ("Import CSV", self.import_csv), ("Export CSV", self.export_csv),
         ]).pack(fill="x", pady=(0, 8))
 
@@ -53,7 +54,8 @@ class ProductsView(View):
             ("margin", "Margin", -70), ("stock_qty", "Stock", -65),
             ("reorder_level", "Reorder", -70), ("warranty_months", "Warranty (m)", -95),
             ("track_serial", "Serial?", 65, lambda v: "Yes" if v else ""),
-            ("location", "Location", 90)], height=20, on_double=lambda r: self.edit())
+            ("location", "Location", 90)], height=20, on_double=lambda r: self.edit(),
+            selectmode="extended")
         self.table.pack(fill="both", expand=True)
 
     def on_show(self):
@@ -205,6 +207,25 @@ class ProductsView(View):
         LookupDialog(self, self.db, table).show()
         self.on_show()
 
+    # -------------------------------------------------------------- labels
+    def print_labels(self):
+        rows = self.table.selected_all()
+        if not rows:
+            messagebox.showinfo(self.title, "Select one or more products (Ctrl+click or Shift+click).",
+                                parent=self)
+            return
+        LabelDialog(self, self.app, [(r["id"], 1) for r in rows]).show()
+
+    def gen_barcodes(self):
+        rows = self.table.selected_all()
+        scope = "the selected products" if rows else "ALL products"
+        if not confirm(self, "Barcodes", f"Create a new in-store barcode for {scope} that have none?"):
+            return
+        n = catalog.assign_missing_barcodes(self.db, [r["id"] for r in rows] if rows else None,
+                                            self.app.user["id"])
+        info(self, "Barcodes", f"Created {n} barcode(s). Use Print labels to stick them on the products.")
+        self.reload()
+
     # ----------------------------------------------------------------- CSV
     def import_csv(self):
         path = filedialog.askopenfilename(parent=self, title="Import products",
@@ -296,3 +317,63 @@ class LookupDialog(Dialog):
         if row and confirm(self, "Delete", f"Delete '{row['name']}'? Products keep working without it."):
             catalog.delete_lookup(self.db, self.table_name, row["id"])
             self.reload()
+
+
+class LabelDialog(Dialog):
+    """Choose how many barcode labels to print for each product."""
+
+    def __init__(self, parent, app, product_copies):
+        super().__init__(parent, "Print barcode labels")
+        self.app, self.db = app, app.db
+        settings = self.db.get_settings()
+        fmt = settings.get("label_format", "html_roll")
+        ttk.Label(self.body, text=f"Printer type: {barcodes.LABEL_FORMATS.get(fmt, fmt)}   "
+                                  f"({settings.get('label_width_mm')} × {settings.get('label_height_mm')} mm, "
+                                  f"change in Settings → Labels)", style="Muted.TLabel").pack(anchor="w")
+        self.items = []
+        for pid, copies in product_copies:
+            p = catalog.get_product(self.db, pid)
+            self.items.append({"id": p["id"], "name": p["name"], "code": p["barcode"] or p["sku"],
+                               "price": p["sell_price"], "stock": p["stock_qty"], "copies": copies})
+        self.table = DataTable(self.body, [
+            ("name", "Product", 280), ("code", "Barcode", 150), ("price", "Price", -90, lambda v: f"{v:,.2f}"),
+            ("stock", "Stock", -60), ("copies", "Labels", -70)], height=12,
+            on_double=lambda r: self.set_copies())
+        self.table.pack(fill="both", expand=True, pady=8)
+        toolbar(self.body, [("Change number of labels", self.set_copies),
+                            ("Labels = stock quantity", self.copies_from_stock),
+                            ("Remove", self.remove)]).pack(fill="x")
+        self.buttons(ok_text="🖨 Print labels")
+        self.refresh()
+
+    def refresh(self):
+        self.table.set_rows(self.items)
+
+    def set_copies(self):
+        row = self.table.selected()
+        if row:
+            n = ask_value(self, "Labels", f"Number of labels for {row['name']}", "int", row["copies"])
+            if n is not None:
+                next(i for i in self.items if i["id"] == row["id"])["copies"] = max(0, n)
+                self.refresh()
+
+    def copies_from_stock(self):
+        for item in self.items:
+            item["copies"] = max(0, item["stock"])
+        self.refresh()
+
+    def remove(self):
+        row = self.table.selected()
+        if row:
+            self.items = [i for i in self.items if i["id"] != row["id"]]
+            self.refresh()
+
+    def ok(self):
+        try:
+            msg = barcodes.print_labels(self.db, {i["id"]: i["copies"] for i in self.items})
+        except POSError as exc:
+            messagebox.showwarning(self.title(), str(exc), parent=self)
+            return
+        info(self, "Labels", msg)
+        self.result = True
+        self.destroy()
