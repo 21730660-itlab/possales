@@ -8,6 +8,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
+from . import edition
+
 SCHEMA_VERSION = 1
 
 SCHEMA = """
@@ -348,7 +350,7 @@ def money(value) -> float:
 
 
 # The Windows installer writes this file next to POS.exe. Program Files is read-only for
-# normal users, so an installed copy keeps its data in C:\ProgramData\ElectronicsPOS instead.
+# normal users, so an installed copy keeps its data in C:\ProgramData\<edition folder> instead.
 INSTALLED_MARKER = "pos_installed.flag"
 
 
@@ -356,14 +358,17 @@ def app_data_dir() -> str:
     """Folder that holds the database, receipts and backups."""
     base = os.environ.get("POS_DATA_DIR")
     if not base:
+        ed_key = edition.current_key()
         if getattr(sys, "frozen", False):  # running as a PyInstaller .exe
             root = os.path.dirname(sys.executable)
             if os.path.exists(os.path.join(root, INSTALLED_MARKER)):
                 program_data = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
-                base = os.path.join(program_data, "ElectronicsPOS")
+                base = os.path.join(program_data, edition.current()["data_folder"])
         else:
             root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        base = base or os.path.join(root, "data")
+        # Each edition keeps its own data so they never share a database.
+        local = "data" if ed_key == edition.DEFAULT_EDITION else f"data_{ed_key}"
+        base = base or os.path.join(root, local)
     os.makedirs(base, exist_ok=True)
     return base
 
@@ -385,7 +390,9 @@ class Database:
     # ------------------------------------------------------------------ setup
     def _init_schema(self):
         self.conn.executescript(SCHEMA)
-        for key, value in DEFAULT_SETTINGS.items():
+        defaults = {**DEFAULT_SETTINGS, "ui_language": edition.current()["language"],
+                    **edition.current()["settings"]}
+        for key, value in defaults.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
         self.conn.execute(

@@ -1,6 +1,4 @@
-"""Windows check: does Tk draw Arabic shaped and right-to-left? Prints a screenshot as base64."""
-import base64
-import io
+"""Windows check: does Tk draw Arabic shaped and right-to-left? Saves screenshots/tk_probe.png."""
 import tkinter as tk
 from tkinter import ttk
 
@@ -28,10 +26,7 @@ root.mainloop()
 root.update()
 x, y = root.winfo_rootx(), root.winfo_rooty()
 img = ImageGrab.grab((x, y, x + root.winfo_width(), y + root.winfo_height()))
-buf = io.BytesIO()
-img.save(buf, "PNG", optimize=True)
-data = base64.b64encode(buf.getvalue()).decode()
+import os
+os.makedirs("screenshots", exist_ok=True)
+img.save("screenshots/tk_probe.png")
 print("TK", root.tk.call("info", "patchlevel"))
-for i in range(0, len(data), 2000):
-    print("IMG:" + data[i:i + 2000])
-print("IMG-END")
