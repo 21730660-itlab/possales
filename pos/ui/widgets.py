@@ -1,4 +1,10 @@
-"""Reusable Tkinter widgets: theme, data tables, form dialogs and helpers."""
+"""Reusable Tkinter widgets: theme, data tables, form dialogs and helpers.
+
+Layout helpers mirror automatically for right-to-left languages (Arabic): use START/END
+instead of "left"/"right" for pack sides, W/E/NW for anchors and stickies, and col() for
+grid columns. These are fixed when this module is imported, so the interface language
+must be chosen before the screens are imported (see main.py).
+"""
 from __future__ import annotations
 
 import sys
@@ -8,11 +14,29 @@ from datetime import date, timedelta
 from tkinter import messagebox, ttk
 
 from ..db import POSError, money
+from ..i18n import _, is_rtl, plain
 from ..services import auth
 
 IS_WIN = sys.platform.startswith("win")
 FONT_FAMILY = "Segoe UI" if IS_WIN else "DejaVu Sans"
 MONO_FAMILY = "Consolas" if IS_WIN else "DejaVu Sans Mono"
+
+RTL = is_rtl()
+START, END = ("right", "left") if RTL else ("left", "right")
+W, E = ("e", "w") if RTL else ("w", "e")
+NW = "ne" if RTL else "nw"
+JUSTIFY = "right" if RTL else "left"
+
+
+def pad(before: int, after: int) -> tuple[int, int]:
+    """Horizontal padding given in reading order (start, end)."""
+    return (after, before) if RTL else (before, after)
+
+
+def col(index: int, count: int) -> int:
+    """Grid column `index` (in reading order) of `count` columns."""
+    return count - 1 - index if RTL else index
+
 
 COLORS = {
     "bg": "#f3f5f9",
@@ -39,6 +63,11 @@ def setup_theme(root: tk.Tk, base_size: int = 11):
         tkfont.nametofont(name).configure(family=FONT_FAMILY, size=base_size)
     tkfont.nametofont("TkFixedFont").configure(family=MONO_FAMILY, size=base_size)
     root.option_add("*TCombobox*Listbox.font", f)
+    if RTL:
+        root.option_add("*TEntry.justify", "right")
+        root.option_add("*TCombobox.justify", "right")
+        root.option_add("*TSpinbox.justify", "right")
+        root.option_add("*Listbox.justify", "right")
     root.configure(bg=COLORS["bg"])
     style.configure(".", font=f, background=COLORS["bg"], foreground=COLORS["text"])
     style.configure("TFrame", background=COLORS["bg"])
@@ -68,6 +97,9 @@ def setup_theme(root: tk.Tk, base_size: int = 11):
     style.configure("TLabelframe.Label", font=(FONT_FAMILY, base_size, "bold"),
                     background=COLORS["bg"])
     style.configure("TNotebook.Tab", padding=(14, 6))
+    if RTL:
+        style.configure("TLabelframe", labelanchor="ne")
+        style.configure("TCheckbutton", justify="right")
     return style
 
 
@@ -77,18 +109,27 @@ def fmt_money(value, symbol: str = "$") -> str:
     return f"{'-' if value < 0 else ''}{symbol}{abs(value):,.2f}"
 
 
-def parse_float(text, field: str = "Value") -> float:
+def parse_float(text, field: str = "") -> float:
     try:
         return float(str(text).replace(",", "").strip() or 0)
     except ValueError:
-        raise POSError(f"{field} must be a number.")
+        raise POSError(_("{field} must be a number.").format(field=field or _("Value")))
 
 
-def parse_int(text, field: str = "Value") -> int:
+def parse_int(text, field: str = "") -> int:
     try:
         return int(float(str(text).replace(",", "").strip() or 0))
     except ValueError:
-        raise POSError(f"{field} must be a whole number.")
+        raise POSError(_("{field} must be a whole number.").format(field=field or _("Value")))
+
+
+def add_tabs(notebook: ttk.Notebook, tabs):
+    """Add (widget, title) tabs in reading order (right to left for Arabic)."""
+    tabs = list(tabs)
+    for widget, title in (reversed(tabs) if RTL else tabs):
+        notebook.add(widget, text=title)
+    if tabs:
+        notebook.select(tabs[0][0])
 
 
 # ------------------------------------------------------------------ data table
@@ -96,6 +137,7 @@ class DataTable(ttk.Frame):
     """A Treeview with scrollbars, column sorting and row lookup.
 
     columns: list of (key, heading, width) or (key, heading, width, formatter).
+    A negative width marks a numeric column (aligned to the end).
     """
 
     def __init__(self, parent, columns, height: int = 15, on_select=None, on_double=None,
@@ -105,19 +147,22 @@ class DataTable(ttk.Frame):
         keys = [c[0] for c in self.columns]
         self.tree = ttk.Treeview(self, columns=keys, show="headings", height=height,
                                  selectmode=selectmode)
-        for key, heading, width, _ in self.columns:
-            self.tree.heading(key, text=heading, command=lambda k=key: self.sort_by(k))
+        if RTL:  # first column on the right
+            self.tree.configure(displaycolumns=list(reversed(keys)))
+        for key, heading, width, _fmt in self.columns:
+            self.tree.heading(key, text=heading, anchor=W,
+                              command=lambda k=key: self.sort_by(k))
             numeric = width < 0
-            self.tree.column(key, width=abs(width), anchor="e" if numeric else "w",
+            self.tree.column(key, width=abs(width), anchor=E if numeric else W,
                              stretch=True, minwidth=40)
         ys = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
         xs = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        ys.grid(row=0, column=1, sticky="ns")
-        xs.grid(row=1, column=0, sticky="ew")
+        self.tree.grid(row=0, column=col(0, 2), sticky="nsew")
+        ys.grid(row=0, column=col(1, 2), sticky="ns")
+        xs.grid(row=1, column=col(0, 2), sticky="ew")
         self.rowconfigure(0, weight=1)
-        self.columnconfigure(0, weight=1)
+        self.columnconfigure(col(0, 2), weight=1)
         self.tree.tag_configure("warn", foreground=COLORS["danger"])
         self.tree.tag_configure("ok", foreground=COLORS["success"])
         self.tree.tag_configure("muted", foreground=COLORS["muted"])
@@ -138,7 +183,7 @@ class DataTable(ttk.Frame):
             if iid in self.rows:
                 iid = f"{iid}_{n}"
             values = []
-            for key, _, _, formatter in self.columns:
+            for key, _heading, _width, formatter in self.columns:
                 value = row.get(key, "")
                 if formatter:
                     value = formatter(value)
@@ -221,13 +266,16 @@ class Dialog(tk.Toplevel):
         self.wait_window(self)
         return self.result
 
-    def buttons(self, ok_text="OK", cancel_text="Cancel", row_parent=None):
+    def buttons(self, ok_text=None, cancel_text=None, row_parent=None):
+        """OK / Cancel buttons at the bottom. Pass "" to leave one out."""
+        ok_text = _("OK") if ok_text is None else ok_text
+        cancel_text = _("Cancel") if cancel_text is None else cancel_text
         bar = ttk.Frame(row_parent or self.body)
         bar.pack(fill="x", pady=(14, 0), side="bottom")
         if cancel_text:
-            ttk.Button(bar, text=cancel_text, command=self.cancel).pack(side="right", padx=(8, 0))
+            ttk.Button(bar, text=cancel_text, command=self.cancel).pack(side=END, padx=pad(8, 0))
         if ok_text:
-            ttk.Button(bar, text=ok_text, style="Accent.TButton", command=self.ok).pack(side="right")
+            ttk.Button(bar, text=ok_text, style="Accent.TButton", command=self.ok).pack(side=END)
         return bar
 
     def ok(self):
@@ -242,11 +290,12 @@ class FormDialog(Dialog):
     """Generic form. Each field is a dict with:
 
     key, label, type (text|password|int|float|combo|check|multiline|readonly),
-    values (for combo), default, required, width.
+    values (for combo), choices (combo of (stored value, shown text) pairs),
+    default, required, width, hint.
     `on_submit(values)` may raise POSError to keep the dialog open.
     """
 
-    def __init__(self, parent, title, fields, initial=None, on_submit=None, ok_text="Save"):
+    def __init__(self, parent, title, fields, initial=None, on_submit=None, ok_text=None):
         super().__init__(parent, title)
         self.fields = fields
         self.on_submit = on_submit
@@ -254,7 +303,8 @@ class FormDialog(Dialog):
         initial = dict(initial or {})
         grid = ttk.Frame(self.body)
         grid.pack(fill="both", expand=True)
-        grid.columnconfigure(1, weight=1)
+        label_col, field_col, hint_col = col(0, 3), col(1, 3), col(2, 3)
+        grid.columnconfigure(field_col, weight=1)
         first = None
         for row, f in enumerate(fields):
             kind = f.get("type", "text")
@@ -263,38 +313,43 @@ class FormDialog(Dialog):
                 value = ""
             label = f["label"] + (" *" if f.get("required") else "")
             if kind != "check":
-                ttk.Label(grid, text=label).grid(row=row, column=0, sticky="nw", padx=(0, 10), pady=4)
+                ttk.Label(grid, text=label).grid(row=row, column=label_col, sticky=NW,
+                                                 padx=pad(0, 10), pady=4)
             if kind == "check":
                 var = tk.BooleanVar(value=bool(int(value or 0)) if str(value).isdigit() else bool(value))
                 w = ttk.Checkbutton(grid, text=f["label"], variable=var)
-                w.grid(row=row, column=1, sticky="w", pady=4)
+                w.grid(row=row, column=field_col, sticky=W, pady=4)
             elif kind == "multiline":
                 var = None
                 w = tk.Text(grid, height=f.get("height", 4), width=f.get("width", 40), wrap="word",
                             font=(FONT_FAMILY, 11), relief="solid", borderwidth=1)
                 w.insert("1.0", str(value))
-                w.grid(row=row, column=1, sticky="nsew", pady=4)
+                w.grid(row=row, column=field_col, sticky="nsew", pady=4)
             elif kind == "combo":
+                values = list(f.get("values", []))
+                if "choices" in f:
+                    labels = dict(f["choices"])
+                    values = list(labels.values())
+                    value = labels.get(value, value)
                 var = tk.StringVar(value=str(value))
-                w = ttk.Combobox(grid, textvariable=var, values=list(f.get("values", [])),
-                                 width=f.get("width", 38),
+                w = ttk.Combobox(grid, textvariable=var, values=values, width=f.get("width", 38),
                                  state="readonly" if f.get("strict", True) else "normal")
-                w.grid(row=row, column=1, sticky="ew", pady=4)
+                w.grid(row=row, column=field_col, sticky="ew", pady=4)
             else:
                 var = tk.StringVar(value=str(value))
                 w = ttk.Entry(grid, textvariable=var, width=f.get("width", 40),
                               show="•" if kind == "password" else "")
                 if kind == "readonly":
                     w.state(["readonly"])
-                w.grid(row=row, column=1, sticky="ew", pady=4)
+                w.grid(row=row, column=field_col, sticky="ew", pady=4)
             if f.get("hint"):
                 ttk.Label(grid, text=f["hint"], style="Muted.TLabel").grid(
-                    row=row, column=2, sticky="w", padx=(8, 0))
+                    row=row, column=hint_col, sticky=W, padx=pad(8, 0))
             self.vars[f["key"]] = var
             self.widgets[f["key"]] = w
             if first is None and kind not in ("readonly", "check"):
                 first = w
-        self.buttons(ok_text=ok_text)
+        self.buttons(ok_text=_("Save") if ok_text is None else ok_text)
         self.bind("<Return>", self._on_return)
         if first is not None:
             self.after(50, first.focus_set)
@@ -313,13 +368,15 @@ class FormDialog(Dialog):
             elif kind == "check":
                 out[key] = bool(self.vars[key].get())
             else:
-                raw = self.vars[key].get().strip()
+                raw = plain(self.vars[key].get()).strip()
                 if f.get("required") and not raw:
-                    raise POSError(f"{f['label']} is required.")
+                    raise POSError(_("{field} is required.").format(field=f["label"]))
                 if kind == "int":
                     out[key] = parse_int(raw, f["label"])
                 elif kind == "float":
                     out[key] = parse_float(raw, f["label"])
+                elif "choices" in f:
+                    out[key] = next((v for v, shown in f["choices"] if plain(shown) == raw), raw)
                 else:
                     out[key] = raw
         return out
@@ -336,18 +393,18 @@ class FormDialog(Dialog):
         self.destroy()
 
 
-def ask_form(parent, title, fields, initial=None, on_submit=None, ok_text="Save"):
+def ask_form(parent, title, fields, initial=None, on_submit=None, ok_text=None):
     return FormDialog(parent, title, fields, initial, on_submit, ok_text).show()
 
 
 def ask_value(parent, title, label, kind="float", default="", hint=""):
     res = ask_form(parent, title, [{"key": "v", "label": label, "type": kind, "default": default,
-                                    "required": True, "hint": hint}], ok_text="OK")
+                                    "required": True, "hint": hint}], ok_text=_("OK"))
     return None if res is None else res["v"]
 
 
 class TextPreview(Dialog):
-    """Shows a receipt/report with Print and Save options."""
+    """Shows a receipt/report with a Print option."""
 
     def __init__(self, parent, title, text, on_print=None, width=48):
         super().__init__(parent, title)
@@ -359,34 +416,35 @@ class TextPreview(Dialog):
         box.configure(yscrollcommand=ys.set)
         bar = ttk.Frame(self.body)
         bar.pack(fill="x", side="bottom", pady=(12, 0))
-        ys.pack(side="right", fill="y")
+        ys.pack(side=END, fill="y")
         box.pack(fill="both", expand=True)
-        ttk.Button(bar, text="Close", command=self.cancel).pack(side="right", padx=(8, 0))
+        ttk.Button(bar, text=_("Close"), command=self.cancel).pack(side=END, padx=pad(8, 0))
         if on_print:
             def do_print():
                 try:
                     on_print()
                 except Exception as exc:  # printing problems should not crash the POS
-                    messagebox.showerror("Print", f"Could not print: {exc}", parent=self)
-            ttk.Button(bar, text="🖨 Print", style="Accent.TButton", command=do_print).pack(side="right")
+                    messagebox.showerror(_("Print"), _("Could not print: {error}").format(error=exc),
+                                         parent=self)
+            ttk.Button(bar, text=_("🖨 Print"), style="Accent.TButton", command=do_print).pack(side=END)
         self.bind("<Return>", lambda e: self.cancel())
 
 
 class ManagerOverride(Dialog):
     def __init__(self, parent, db, perm, reason):
-        super().__init__(parent, "Manager approval required")
+        super().__init__(parent, _("Manager approval required"))
         self.db, self.perm = db, perm
-        ttk.Label(self.body, text=reason, wraplength=360).pack(anchor="w", pady=(0, 10))
+        ttk.Label(self.body, text=reason, wraplength=360, justify=JUSTIFY).pack(anchor=W, pady=(0, 10))
         form = ttk.Frame(self.body)
         form.pack(fill="x")
         self.user = tk.StringVar()
         self.pw = tk.StringVar()
-        ttk.Label(form, text="Manager username").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Label(form, text=_("Manager username")).grid(row=0, column=col(0, 2), sticky=W, pady=4)
         e = ttk.Entry(form, textvariable=self.user)
-        e.grid(row=0, column=1, sticky="ew", padx=8)
-        ttk.Label(form, text="Password").grid(row=1, column=0, sticky="w", pady=4)
-        ttk.Entry(form, textvariable=self.pw, show="•").grid(row=1, column=1, sticky="ew", padx=8)
-        self.buttons(ok_text="Approve")
+        e.grid(row=0, column=col(1, 2), sticky="ew", padx=8)
+        ttk.Label(form, text=_("Password")).grid(row=1, column=col(0, 2), sticky=W, pady=4)
+        ttk.Entry(form, textvariable=self.pw, show="•").grid(row=1, column=col(1, 2), sticky="ew", padx=8)
+        self.buttons(ok_text=_("Approve"))
         self.bind("<Return>", lambda ev: self.ok())
         self.after(50, e.focus_set)
 
@@ -397,7 +455,8 @@ class ManagerOverride(Dialog):
             messagebox.showwarning(self.title(), str(exc), parent=self)
             return
         if not auth.has_permission(user, self.perm):
-            messagebox.showwarning(self.title(), "That user is not allowed to approve this.", parent=self)
+            messagebox.showwarning(self.title(), _("That user is not allowed to approve this."),
+                                   parent=self)
             return
         self.result = user
         self.destroy()
@@ -423,7 +482,7 @@ def info(parent, title, message):
 
 
 # --------------------------------------------------------------- date range
-def date_presets() -> dict[str, tuple[str, str]]:
+def date_presets() -> dict[str, tuple[date, date]]:
     t = date.today()
     week_start = t - timedelta(days=t.weekday())
     month_start = t.replace(day=1)
@@ -440,27 +499,35 @@ def date_presets() -> dict[str, tuple[str, str]]:
     }
 
 
+PRESET_LABELS = {
+    "Today": _("Today"), "Yesterday": _("Yesterday"), "This week": _("This week"),
+    "Last 7 days": _("Last 7 days"), "This month": _("This month"), "Last month": _("Last month"),
+    "Last 30 days": _("Last 30 days"), "This year": _("This year"), "Custom": _("Custom"),
+}
+
+
 class DateRangeBar(ttk.Frame):
     def __init__(self, parent, on_change, preset="Today"):
         super().__init__(parent)
         self.on_change = on_change
         self.d1 = tk.StringVar()
         self.d2 = tk.StringVar()
-        self.preset = tk.StringVar(value=preset)
-        ttk.Label(self, text="Period").pack(side="left")
-        cb = ttk.Combobox(self, textvariable=self.preset, values=list(date_presets()) + ["Custom"],
+        self.preset = tk.StringVar(value=PRESET_LABELS[preset])
+        ttk.Label(self, text=_("Period")).pack(side=START)
+        cb = ttk.Combobox(self, textvariable=self.preset, values=list(PRESET_LABELS.values()),
                           state="readonly", width=13)
-        cb.pack(side="left", padx=6)
+        cb.pack(side=START, padx=6)
         cb.bind("<<ComboboxSelected>>", lambda e: self.apply_preset())
-        ttk.Label(self, text="From").pack(side="left", padx=(8, 2))
-        ttk.Entry(self, textvariable=self.d1, width=11).pack(side="left")
-        ttk.Label(self, text="To").pack(side="left", padx=(8, 2))
-        ttk.Entry(self, textvariable=self.d2, width=11).pack(side="left")
-        ttk.Button(self, text="Go", command=self.changed).pack(side="left", padx=6)
+        ttk.Label(self, text=_("From")).pack(side=START, padx=pad(8, 2))
+        ttk.Entry(self, textvariable=self.d1, width=11).pack(side=START)
+        ttk.Label(self, text=_("To")).pack(side=START, padx=pad(8, 2))
+        ttk.Entry(self, textvariable=self.d2, width=11).pack(side=START)
+        ttk.Button(self, text=_("Go"), command=self.changed).pack(side=START, padx=6)
         self.apply_preset(notify=False)
 
     def apply_preset(self, notify=True):
-        rng = date_presets().get(self.preset.get())
+        key = next((k for k, shown in PRESET_LABELS.items() if shown == self.preset.get()), "")
+        rng = date_presets().get(key)
         if rng:
             self.d1.set(rng[0].isoformat())
             self.d2.set(rng[1].isoformat())
@@ -476,23 +543,23 @@ class DateRangeBar(ttk.Frame):
             try:
                 date.fromisoformat(d)
             except ValueError:
-                raise POSError(f"'{d}' is not a valid date. Use YYYY-MM-DD.")
+                raise POSError(_("'{date}' is not a valid date. Use YYYY-MM-DD.").format(date=d))
         return (d1, d2) if d1 <= d2 else (d2, d1)
 
 
 class SearchBar(ttk.Frame):
     """Entry that calls `on_search` as the user types (debounced)."""
 
-    def __init__(self, parent, on_search, placeholder="Search...", width=30):
+    def __init__(self, parent, on_search, placeholder="", width=30):
         super().__init__(parent)
         self.var = tk.StringVar()
-        ttk.Label(self, text="🔍").pack(side="left")
+        ttk.Label(self, text="🔍").pack(side=START)
         self.entry = ttk.Entry(self, textvariable=self.var, width=width)
-        self.entry.pack(side="left", padx=4, fill="x", expand=True)
+        self.entry.pack(side=START, padx=4, fill="x", expand=True)
         self._job = None
         self.var.trace_add("write", lambda *a: self._schedule(on_search))
         self.entry.bind("<Escape>", lambda e: self.var.set(""))
-        ttk.Label(self, text=placeholder, style="Muted.TLabel").pack(side="left", padx=4)
+        ttk.Label(self, text=placeholder, style="Muted.TLabel").pack(side=START, padx=4)
 
     def _schedule(self, fn):
         if self._job:
@@ -504,7 +571,7 @@ class SearchBar(ttk.Frame):
 
 
 class FlowFrame(ttk.Frame):
-    """Lays its children out left to right, wrapping onto new rows when out of width."""
+    """Lays its children out in reading order, wrapping onto new rows when out of width."""
 
     def __init__(self, parent, gap=6, **kw):
         super().__init__(parent, **kw)
@@ -522,7 +589,7 @@ class FlowFrame(ttk.Frame):
             if x and x + w > width:
                 x, y = 0, y + row_h + self.gap
                 row_h = 0
-            child.place(x=x, y=y)
+            child.place(x=width - x - w if RTL else x, y=y)
             x += w + self.gap
             row_h = max(row_h, h)
         height = y + row_h
@@ -550,11 +617,11 @@ def toolbar(parent, buttons):
 class StatCard(ttk.Frame):
     def __init__(self, parent, title, value="-", color=None):
         super().__init__(parent, style="Panel.TFrame", padding=14)
-        ttk.Label(self, text=title, style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(self, text=title, style="CardTitle.TLabel").pack(anchor=W)
         self.value = ttk.Label(self, text=value, style="CardValue.TLabel")
         if color:
             self.value.configure(foreground=color)
-        self.value.pack(anchor="w", pady=(4, 0))
+        self.value.pack(anchor=W, pady=(4, 0))
 
     def set(self, value):
         self.value.configure(text=value)

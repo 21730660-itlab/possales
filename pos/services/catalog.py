@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 
 from ..db import Database, POSError, money, now
+from ..i18n import _
 from .barcodes import ean13_check_digit
 
 LOOKUP_TABLES = ("categories", "brands")
@@ -36,10 +37,10 @@ def rename_lookup(db: Database, table: str, row_id: int, name: str):
     _check_lookup(table)
     name = name.strip()
     if not name:
-        raise POSError("Name is required.")
+        raise POSError(_("Name is required."))
     clash = db.one(f"SELECT id FROM {table} WHERE name = ? AND id != ?", (name, row_id))
     if clash:
-        raise POSError(f"'{name}' already exists.")
+        raise POSError(_("'{name}' already exists.").format(name=name))
     db.update(table, row_id, {"name": name})
 
 
@@ -87,7 +88,7 @@ def list_products(db: Database, search: str = "", category_id: int | None = None
 def get_product(db: Database, product_id: int):
     row = db.one(PRODUCT_SELECT + " WHERE p.id = ?", (product_id,))
     if not row:
-        raise POSError("Product not found.")
+        raise POSError(_("Product not found."))
     return row
 
 
@@ -120,12 +121,14 @@ def save_product(db: Database, data: dict, user_id=None, product_id: int | None 
         dup = db.one("SELECT id FROM products WHERE sku = ? AND id != ?",
                      (fields["sku"], product_id or 0))
         if dup:
-            raise POSError(f"SKU '{fields['sku']}' is already used by another product.")
+            raise POSError(_("SKU '{sku}' is already used by another product.").format(
+                sku=fields['sku']))
         if fields["barcode"]:
             dup = db.one("SELECT id FROM products WHERE barcode = ? AND id != ?",
                          (fields["barcode"], product_id or 0))
             if dup:
-                raise POSError(f"Barcode '{fields['barcode']}' is already used by another product.")
+                raise POSError(_("Barcode '{barcode}' is already used by another product.").format(
+                    barcode=fields['barcode']))
         if product_id:
             fields["updated_at"] = now()
             db.update("products", product_id, fields)
@@ -144,7 +147,7 @@ def _clean_product(db: Database, data: dict) -> dict:
     name = (data.get("name") or "").strip()
     sku = (data.get("sku") or "").strip()
     if not name:
-        raise POSError("Product name is required.")
+        raise POSError(_("Product name is required."))
     if not sku:
         sku = next_sku(db)
     try:
@@ -153,9 +156,9 @@ def _clean_product(db: Database, data: dict) -> dict:
         reorder = int(data.get("reorder_level") or 0)
         warranty = int(data.get("warranty_months") or 0)
     except (TypeError, ValueError):
-        raise POSError("Prices, reorder level and warranty must be numbers.")
+        raise POSError(_("Prices, reorder level and warranty must be numbers."))
     if cost < 0 or price < 0:
-        raise POSError("Prices cannot be negative.")
+        raise POSError(_("Prices cannot be negative."))
 
     def lookup(table, id_key, name_key):
         if data.get(id_key):
@@ -239,7 +242,7 @@ def adjust_stock(db: Database, product_id: int, change: int, reason: str, user_i
     with db.transaction():
         product = db.one("SELECT stock_qty FROM products WHERE id = ?", (product_id,))
         if not product:
-            raise POSError("Product not found.")
+            raise POSError(_("Product not found."))
         balance = product["stock_qty"] + change
         db.execute("UPDATE products SET stock_qty = ? WHERE id = ?", (balance, product_id))
         db.insert("stock_movements", {
@@ -253,7 +256,7 @@ def set_stock_count(db: Database, product_id: int, counted: int, user_id=None, n
     """Stock-take: set the quantity to what was physically counted."""
     current = db.scalar("SELECT stock_qty FROM products WHERE id = ?", (product_id,))
     if current is None:
-        raise POSError("Product not found.")
+        raise POSError(_("Product not found."))
     diff = int(counted) - current
     if diff == 0:
         return current
@@ -289,7 +292,8 @@ def add_serials(db: Database, product_id: int, serials, purchase_id=None) -> int
             existing = db.one("SELECT * FROM product_serials WHERE serial_no = ?", (serial,))
             if existing:
                 if existing["status"] == "in_stock":
-                    raise POSError(f"Serial '{serial}' is already in stock.")
+                    raise POSError(_("Serial '{serial}' is already in stock.").format(
+                        serial=serial))
                 db.update("product_serials", existing["id"], {
                     "product_id": product_id, "status": "in_stock", "sale_id": None})
             else:
@@ -342,5 +346,5 @@ def import_products_csv(db: Database, path: str, user_id=None) -> tuple[int, int
                     save_product(db, row, user_id)
                     created += 1
             except (POSError, ValueError) as exc:
-                errors.append(f"Line {line_no}: {exc}")
+                errors.append(_("Line {line}: {error}").format(line=line_no, error=exc))
     return created, updated, errors

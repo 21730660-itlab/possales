@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..db import Database, POSError, money, now
+from ..i18n import _
 
 
 # -------------------------------------------------------------------- customers
@@ -20,24 +21,25 @@ def list_customers(db: Database, search: str = "", limit: int = 1000):
 def get_customer(db: Database, customer_id: int):
     row = db.one("SELECT * FROM customers WHERE id = ?", (customer_id,))
     if not row:
-        raise POSError("Customer not found.")
+        raise POSError(_("Customer not found."))
     return row
 
 
 def save_customer(db: Database, data: dict, customer_id: int | None = None, user_id=None) -> int:
     name = (data.get("name") or "").strip()
     if not name:
-        raise POSError("Customer name is required.")
+        raise POSError(_("Customer name is required."))
     phone = (data.get("phone") or "").strip()
     if phone:
         dup = db.one("SELECT id, name FROM customers WHERE phone = ? AND id != ?",
                      (phone, customer_id or 0))
         if dup:
-            raise POSError(f"Phone {phone} already belongs to customer '{dup['name']}'.")
+            raise POSError(_("Phone {phone} already belongs to customer '{name}'.").format(
+                phone=phone, name=dup['name']))
     try:
         credit_limit = money(data.get("credit_limit") or 0)
     except (TypeError, ValueError, ArithmeticError):
-        raise POSError("Credit limit must be a number.")
+        raise POSError(_("Credit limit must be a number."))
     fields = {
         "name": name, "phone": phone,
         "email": (data.get("email") or "").strip(),
@@ -58,7 +60,7 @@ def save_customer(db: Database, data: dict, customer_id: int | None = None, user
 def delete_customer(db: Database, customer_id: int, user_id=None):
     customer = get_customer(db, customer_id)
     if abs(customer["balance"]) > 0.004:
-        raise POSError("This customer has an outstanding balance and cannot be deleted.")
+        raise POSError(_("This customer has an outstanding balance and cannot be deleted."))
     db.execute("DELETE FROM customers WHERE id = ?", (customer_id,))
     db.log(user_id, "customer.delete", customer["name"])
 
@@ -78,7 +80,7 @@ def receive_account_payment(db: Database, customer_id: int, amount: float, metho
     """Customer pays down their account (credit) balance."""
     amount = money(amount)
     if amount <= 0:
-        raise POSError("Amount must be greater than zero.")
+        raise POSError(_("Amount must be greater than zero."))
     customer = get_customer(db, customer_id)
     with db.transaction():
         pay_id = db.insert("customer_payments", {
@@ -114,14 +116,14 @@ def list_suppliers(db: Database, search: str = "", include_inactive: bool = Fals
 def get_supplier(db: Database, supplier_id: int):
     row = db.one("SELECT * FROM suppliers WHERE id = ?", (supplier_id,))
     if not row:
-        raise POSError("Supplier not found.")
+        raise POSError(_("Supplier not found."))
     return row
 
 
 def save_supplier(db: Database, data: dict, supplier_id: int | None = None, user_id=None) -> int:
     name = (data.get("name") or "").strip()
     if not name:
-        raise POSError("Supplier name is required.")
+        raise POSError(_("Supplier name is required."))
     fields = {k: (data.get(k) or "").strip()
               for k in ("contact", "phone", "email", "address", "notes")}
     fields["name"] = name

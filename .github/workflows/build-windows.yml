@@ -7,12 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Publish a release with this tag (e.g. v1.1.0). Leave empty to only build."
+        description: "Publish a release with this tag (e.g. v1.3.0). Leave empty to only build."
         required: false
         default: ""
 
 permissions:
-  contents: write  # needed to attach the installer to a release when a v* tag is pushed
+  contents: write  # attach installers to releases; push screenshots to the ci-screenshots branch
 
 jobs:
   build:
@@ -28,74 +28,125 @@ jobs:
         run: python -m unittest -v
 
       - name: Install build tools
-        run: python -m pip install --upgrade pyinstaller pywin32
+        run: python -m pip install --upgrade pyinstaller pywin32 pillow
 
-      - name: Build POS.exe
-        run: >
-          python -m PyInstaller --noconfirm --windowed --name POS
-          --icon assets/pos.ico --add-data "assets/pos.ico;assets"
-          --hidden-import win32print --hidden-import win32api main.py
-
-      - name: Check that POS.exe starts
+      - name: Build POS.exe (Electronics, English) and ShopPOS.exe (Shop, Arabic)
         shell: pwsh
         run: |
-          $env:POS_DATA_DIR = "$env:RUNNER_TEMP\pos-smoke"
-          $p = Start-Process -FilePath "dist\POS\POS.exe" -PassThru
-          Start-Sleep -Seconds 20
-          if ($p.HasExited) { throw "POS.exe exited early with code $($p.ExitCode)" }
-          if (-not (Test-Path "$env:POS_DATA_DIR\pos.db")) { throw "POS.exe did not create its database" }
-          Stop-Process -Id $p.Id -Force
-          Write-Host "POS.exe started and created its database."
+          foreach ($e in @(@{key="electronics"; name="POS"}, @{key="shop_ar"; name="ShopPOS"})) {
+            python -m PyInstaller --noconfirm --windowed --name $e.name `
+              --icon assets/pos.ico --add-data "assets/pos.ico;assets" `
+              --add-data "installer/editions/$($e.key)/edition.txt;." `
+              --hidden-import win32print --hidden-import win32api main.py
+            if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed for $($e.key)" }
+          }
+
+      - name: Check that both programs start
+        shell: pwsh
+        run: |
+          foreach ($e in @(@{name="POS"; lang="en"}, @{name="ShopPOS"; lang="ar"})) {
+            $env:POS_DATA_DIR = "$env:RUNNER_TEMP\smoke-$($e.name)"
+            $p = Start-Process -FilePath "dist\$($e.name)\$($e.name).exe" -PassThru
+            Start-Sleep -Seconds 20
+            if ($p.HasExited) { throw "$($e.name).exe exited early with code $($p.ExitCode)" }
+            Stop-Process -Id $p.Id -Force
+            $lang = python tools/db_setting.py "$env:POS_DATA_DIR\pos.db" ui_language
+            if ($lang -ne $e.lang) { throw "$($e.name).exe uses language '$lang', expected '$($e.lang)'" }
+            Write-Host "$($e.name).exe started; interface language $lang."
+          }
 
       - name: Read version
         id: version
         shell: bash
         run: echo "version=$(python -c 'import pos; print(pos.__version__)')" >> "$GITHUB_OUTPUT"
 
-      - name: Build installer
+      - name: Build installers
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-            choco install innosetup -y --no-progress
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          # Arabic wizard texts (an unofficial Inno Setup translation); English is used if unavailable.
+          try {
+            Invoke-WebRequest -UseBasicParsing -OutFile installer\Arabic.isl `
+              "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/Arabic.isl"
+          } catch { Write-Host "Arabic.isl not available, the Arabic installer wizard will be in English." }
+          foreach ($e in @("electronics", "shop_ar")) {
+            & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" "/DEdition=$e" installer\setup.iss
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $e" }
           }
-          & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" installer\setup.iss
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          Get-ChildItem dist\*.exe | Format-Table Name, Length
 
-      - name: Check the installer installs and runs
+      - name: Check the installers install and run side by side
         shell: pwsh
         run: |
-          $setup = Get-ChildItem dist\POS_Setup_*.exe | Select-Object -First 1
-          $p = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Installer failed with code $($p.ExitCode)" }
-          $exe = "$env:ProgramFiles\Electronics POS\POS.exe"
-          if (-not (Test-Path $exe)) { throw "POS.exe was not installed" }
-          $app = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 20
-          if ($app.HasExited) { throw "Installed POS.exe exited early" }
-          if (-not (Test-Path "$env:ProgramData\ElectronicsPOS\pos.db")) { throw "Database not in ProgramData" }
-          Stop-Process -Id $app.Id -Force
-          Write-Host "Installed POS.exe runs and stores data in ProgramData."
+          $checks = @(
+            @{setup="POS_Setup_*.exe"; exe="Electronics POS\POS.exe"; data="ElectronicsPOS"; lang="en"},
+            @{setup="ShopPOS_Arabic_Setup_*.exe"; exe="Shop POS\ShopPOS.exe"; data="ShopPOS"; lang="ar"})
+          foreach ($c in $checks) {
+            $setup = Get-ChildItem "dist\$($c.setup)" | Select-Object -First 1
+            $p = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "$($setup.Name) failed with code $($p.ExitCode)" }
+            $exe = "$env:ProgramFiles\$($c.exe)"
+            if (-not (Test-Path $exe)) { throw "$exe was not installed" }
+            $app = Start-Process -FilePath $exe -PassThru
+            Start-Sleep -Seconds 20
+            if ($app.HasExited) { throw "Installed $exe exited early" }
+            Stop-Process -Id $app.Id -Force
+            $db = "$env:ProgramData\$($c.data)\pos.db"
+            if (-not (Test-Path $db)) { throw "Database not found at $db" }
+            $lang = python tools/db_setting.py $db ui_language
+            if ($lang -ne $c.lang) { throw "$exe uses language '$lang', expected '$($c.lang)'" }
+            Write-Host "$($setup.Name): installed, runs, data in $db, language $lang."
+          }
+
+      - name: Screenshots of both editions on Windows
+        shell: pwsh
+        run: |
+          foreach ($e in @("electronics", "shop_ar")) {
+            $env:POS_EDITION = $e
+            python tools/windows_screenshots.py screenshots
+            if ($LASTEXITCODE -ne 0) { throw "Screenshots failed for $e" }
+          }
+
+      - name: Publish screenshots to the ci-screenshots branch
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          cd screenshots
+          git init -q -b ci-screenshots
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A && git commit -qm "Screenshots from run ${{ github.run_id }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-screenshots
 
       - uses: actions/upload-artifact@v4
         with:
-          name: POS_Setup_${{ steps.version.outputs.version }}
-          path: dist/POS_Setup_*.exe
+          name: POS_Installers_${{ steps.version.outputs.version }}
+          path: dist/*_Setup_*.exe
 
-      - name: Attach installer to release
+      - name: Attach installers to release
         if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
           # A manual run creates the tag on the commit it built.
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           target_commitish: ${{ github.sha }}
-          name: Electronics POS ${{ steps.version.outputs.version }}
-          files: dist/POS_Setup_*.exe
+          name: POS ${{ steps.version.outputs.version }}
+          files: dist/*_Setup_*.exe
           body: |
-            ## Install
-            1. Download **POS_Setup_${{ steps.version.outputs.version }}.exe** below.
-            2. Double-click it. If Windows says "Windows protected your PC", click **More info → Run anyway**.
-            3. Start **Electronics POS** from the desktop and sign in with `admin` / `admin`.
+            ## Two programs — pick the one you need
 
-            No Python needed. Shop data is kept in `C:\ProgramData\ElectronicsPOS` and survives updates.
-            Full instructions: [SETUP.md](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/SETUP.md)
+            | File | Program | Language |
+            |---|---|---|
+            | **POS_Setup_${{ steps.version.outputs.version }}.exe** | Electronics POS | English |
+            | **ShopPOS_Arabic_Setup_${{ steps.version.outputs.version }}.exe** | Shop POS — نظام المتجر | Arabic (right to left) |
+
+            Both can be installed on the same computer; each keeps its own data
+            (`C:\ProgramData\ElectronicsPOS` and `C:\ProgramData\ShopPOS`).
+
+            ## Install
+            1. Download the setup file and double-click it. If Windows says "Windows protected your PC",
+               click **More info → Run anyway**.
+            2. Start the program from the desktop and sign in with `admin` / `admin`.
+
+            No Python needed. Full instructions: [SETUP.md](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/SETUP.md)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..db import Database, POSError, money, now, today
+from ..i18n import _
 
 REPAIR_STATUSES = ("Received", "Diagnosing", "Waiting for Parts", "In Progress",
                    "Ready for Pickup", "Delivered", "Cancelled")
@@ -19,10 +20,10 @@ def current_shift(db: Database):
 
 def open_shift(db: Database, user_id: int, opening_cash: float) -> int:
     if current_shift(db):
-        raise POSError("A shift is already open. Close it before opening a new one.")
+        raise POSError(_("A shift is already open. Close it before opening a new one."))
     opening_cash = money(opening_cash)
     if opening_cash < 0:
-        raise POSError("Opening cash cannot be negative.")
+        raise POSError(_("Opening cash cannot be negative."))
     shift_id = db.insert("shifts", {"user_id": user_id, "opened_at": now(),
                                     "opening_cash": opening_cash, "status": "open"})
     db.log(user_id, "shift.open", f"#{shift_id} float={opening_cash:.2f}")
@@ -35,7 +36,7 @@ def cash_movement(db: Database, shift_id: int, kind: str, amount: float, reason:
         raise ValueError(kind)
     amount = money(amount)
     if amount <= 0:
-        raise POSError("Amount must be greater than zero.")
+        raise POSError(_("Amount must be greater than zero."))
     move_id = db.insert("cash_movements", {"shift_id": shift_id, "user_id": user_id, "type": kind,
                                            "amount": amount, "reason": reason, "created_at": now()})
     db.log(user_id, f"cash.{kind}", f"{amount:.2f} {reason}")
@@ -47,7 +48,7 @@ def shift_summary(db: Database, shift_id: int) -> dict:
                       FROM shifts sh JOIN users u ON u.id = sh.user_id
                       LEFT JOIN users c ON c.id = sh.closed_by WHERE sh.id = ?""", (shift_id,))
     if not shift:
-        raise POSError("Shift not found.")
+        raise POSError(_("Shift not found."))
     p = (shift_id,)
     sales = db.one("""SELECT COUNT(*) AS n, COALESCE(SUM(total),0) AS total,
                              COALESCE(SUM(tax_total),0) AS tax,
@@ -84,7 +85,7 @@ def shift_summary(db: Database, shift_id: int) -> dict:
 def close_shift(db: Database, shift_id: int, counted_cash: float, user_id: int, notes: str = "") -> dict:
     summary = shift_summary(db, shift_id)
     if summary["shift"]["status"] != "open":
-        raise POSError("This shift is already closed.")
+        raise POSError(_("This shift is already closed."))
     counted = money(counted_cash)
     db.update("shifts", shift_id, {
         "closed_at": now(), "counted_cash": counted, "expected_cash": summary["expected_cash"],
@@ -104,12 +105,12 @@ def add_expense(db: Database, data: dict, user_id=None, shift_id=None) -> int:
     try:
         amount = money(data.get("amount") or 0)
     except (TypeError, ValueError, ArithmeticError):
-        raise POSError("Amount must be a number.")
+        raise POSError(_("Amount must be a number."))
     if amount <= 0:
-        raise POSError("Amount must be greater than zero.")
+        raise POSError(_("Amount must be greater than zero."))
     from_drawer = bool(data.get("paid_from_drawer"))
     if from_drawer and not shift_id:
-        raise POSError("Open a shift to pay an expense from the cash drawer.")
+        raise POSError(_("Open a shift to pay an expense from the cash drawer."))
     exp_id = db.insert("expenses", {
         "date": (data.get("date") or today()).strip(),
         "category": (data.get("category") or "General").strip(),
@@ -135,7 +136,7 @@ def delete_expense(db: Database, expense_id: int, user_id=None):
     if row["paid_from_drawer"]:
         shift = db.one("SELECT status FROM shifts WHERE id = ?", (row["shift_id"],))
         if shift and shift["status"] == "closed":
-            raise POSError("This expense was paid from a closed shift and cannot be deleted.")
+            raise POSError(_("This expense was paid from a closed shift and cannot be deleted."))
     db.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
     db.log(user_id, "expense.delete", f"#{expense_id} {row['amount']:.2f}")
 
@@ -145,11 +146,11 @@ def create_repair(db: Database, data: dict, user_id=None) -> int:
     device = (data.get("device") or "").strip()
     issue = (data.get("issue") or "").strip()
     if not device or not issue:
-        raise POSError("Device and issue description are required.")
+        raise POSError(_("Device and issue description are required."))
     try:
         estimate = money(data.get("estimate") or 0)
     except (TypeError, ValueError, ArithmeticError):
-        raise POSError("Estimate must be a number.")
+        raise POSError(_("Estimate must be a number."))
     with db.transaction():
         repair_id = db.insert("repairs", {
             "customer_id": data.get("customer_id") or None, "device": device,
@@ -182,11 +183,12 @@ def update_repair(db: Database, repair_id: int, data: dict, user_id=None):
             try:
                 fields[key] = money(data[key] or 0)
             except (TypeError, ValueError, ArithmeticError):
-                raise POSError(f"{key.replace('_', ' ').title()} must be a number.")
+                raise POSError(_('{value} must be a number.').format(
+                    value=key.replace('_', ' ').title()))
     if "status" in data:
         status = data["status"]
         if status not in REPAIR_STATUSES:
-            raise POSError(f"Unknown status: {status}")
+            raise POSError(_('Unknown status: {status}').format(status=status))
         fields["status"] = status
         if status == "Delivered" and repair["status"] != "Delivered":
             fields["delivered_at"] = now()
@@ -198,7 +200,7 @@ def add_repair_payment(db: Database, repair_id: int, amount: float, method: str 
                        user_id=None, shift_id=None) -> int:
     amount = money(amount)
     if amount <= 0:
-        raise POSError("Amount must be greater than zero.")
+        raise POSError(_("Amount must be greater than zero."))
     repair = get_repair(db, repair_id)
     with db.transaction():
         pay_id = db.insert("repair_payments", {
@@ -214,7 +216,7 @@ def get_repair(db: Database, repair_id: int):
                     FROM repairs r LEFT JOIN customers c ON c.id = r.customer_id
                     WHERE r.id = ?""", (repair_id,))
     if not row:
-        raise POSError("Repair ticket not found.")
+        raise POSError(_("Repair ticket not found."))
     return row
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..db import Database, POSError, money, now
+from ..i18n import _
 from . import catalog
 
 
@@ -10,7 +11,7 @@ def create_po(db: Database, supplier_id: int | None, items: list[dict], notes: s
     """`items` is a list of {"product_id", "qty", "unit_cost"}."""
     items = [i for i in items if int(i.get("qty") or 0) > 0]
     if not items:
-        raise POSError("Add at least one product to the purchase order.")
+        raise POSError(_("Add at least one product to the purchase order."))
     with db.transaction():
         po_id = db.insert("purchase_orders", {
             "supplier_id": supplier_id, "user_id": user_id, "created_at": now(),
@@ -20,7 +21,7 @@ def create_po(db: Database, supplier_id: int | None, items: list[dict], notes: s
         for item in items:
             qty, cost = int(item["qty"]), money(item.get("unit_cost") or 0)
             if cost < 0:
-                raise POSError("Unit cost cannot be negative.")
+                raise POSError(_("Unit cost cannot be negative."))
             db.insert("purchase_items", {"po_id": po_id, "product_id": int(item["product_id"]),
                                          "qty": qty, "unit_cost": cost})
             total = money(total + qty * cost)
@@ -45,7 +46,7 @@ def get_po(db: Database, po_id: int) -> dict:
     po = db.one("""SELECT po.*, s.name AS supplier FROM purchase_orders po
                    LEFT JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = ?""", (po_id,))
     if not po:
-        raise POSError("Purchase order not found.")
+        raise POSError(_("Purchase order not found."))
     items = db.query("""SELECT pi.*, p.name, p.sku, p.track_serial FROM purchase_items pi
                         JOIN products p ON p.id = pi.product_id WHERE pi.po_id = ?
                         ORDER BY pi.id""", (po_id,))
@@ -62,7 +63,7 @@ def receive_po(db: Database, po_id: int, received: dict[int, int], user_id=None,
     data = get_po(db, po_id)
     po = data["po"]
     if po["status"] in ("received", "cancelled"):
-        raise POSError(f"This purchase order is already {po['status']}.")
+        raise POSError(_('This purchase order is already {status}.').format(status=po['status']))
     with db.transaction():
         any_received = False
         for item in data["items"]:
@@ -71,11 +72,12 @@ def receive_po(db: Database, po_id: int, received: dict[int, int], user_id=None,
                 continue
             outstanding = item["qty"] - item["received_qty"]
             if qty > outstanding:
-                raise POSError(f"Only {outstanding} of '{item['name']}' are outstanding.")
+                raise POSError(_("Only {outstanding} of '{name}' are outstanding.").format(
+                    outstanding=outstanding, name=item['name']))
             item_serials = [s for s in serials.get(item["id"], []) if s.strip()]
             if item_serials and len(item_serials) != qty:
-                raise POSError(f"Enter {qty} serial numbers for '{item['name']}' "
-                               f"(got {len(item_serials)}).")
+                raise POSError(_("Enter {qty} serial numbers for '{name}' (got {len}).").format(
+                    qty=qty, name=item['name'], len=len(item_serials)))
             product = db.one("SELECT stock_qty, cost_price FROM products WHERE id = ?",
                              (item["product_id"],))
             if update_cost:
@@ -92,7 +94,7 @@ def receive_po(db: Database, po_id: int, received: dict[int, int], user_id=None,
                        (qty, item["id"]))
             any_received = True
         if not any_received:
-            raise POSError("Enter a received quantity for at least one item.")
+            raise POSError(_("Enter a received quantity for at least one item."))
         outstanding = db.scalar("SELECT SUM(qty - received_qty) FROM purchase_items WHERE po_id = ?",
                                 (po_id,), 0)
         status = "received" if outstanding == 0 else "partial"
@@ -104,6 +106,6 @@ def receive_po(db: Database, po_id: int, received: dict[int, int], user_id=None,
 def cancel_po(db: Database, po_id: int, user_id=None):
     po = get_po(db, po_id)["po"]
     if po["status"] != "ordered":
-        raise POSError("Only purchase orders with nothing received can be cancelled.")
+        raise POSError(_("Only purchase orders with nothing received can be cancelled."))
     db.execute("UPDATE purchase_orders SET status = 'cancelled' WHERE id = ?", (po_id,))
     db.log(user_id, "po.cancel", po["po_no"])

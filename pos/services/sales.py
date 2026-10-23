@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 
 from ..db import Database, POSError, money, now, setting_bool, setting_float
+from ..i18n import _
 
 # Cash, Account (customer credit) and Points are built in; the others come from Settings.
 BUILTIN_METHODS = ("Cash", "Account", "Points")
@@ -156,12 +157,12 @@ def checkout(db: Database, cart: Cart, payments: list[dict], user_id: int,
     settings = db.get_settings()
     tax_rate = setting_float(settings, "tax_rate")
     if not cart.lines:
-        raise POSError("The cart is empty.")
+        raise POSError(_("The cart is empty."))
     for line in cart.lines:
         if line.qty <= 0:
-            raise POSError(f"Quantity for '{line.name}' must be at least 1.")
+            raise POSError(_("Quantity for '{name}' must be at least 1.").format(name=line.name))
         if line.unit_price < 0:
-            raise POSError(f"Price for '{line.name}' cannot be negative.")
+            raise POSError(_("Price for '{name}' cannot be negative.").format(name=line.name))
     totals = compute_totals(cart, tax_rate)
     total = totals["total"]
 
@@ -169,39 +170,39 @@ def checkout(db: Database, cart: Cart, payments: list[dict], user_id: int,
                 if money(p.get("amount") or 0) != 0]
     for p in payments:
         if p["amount"] < 0:
-            raise POSError("Payment amounts cannot be negative.")
+            raise POSError(_("Payment amounts cannot be negative."))
         if p["method"] not in payment_methods(settings):
-            raise POSError(f"Unknown payment method: {p['method']}")
+            raise POSError(_('Unknown payment method: {method}').format(method=p['method']))
     paid = money(sum(p["amount"] for p in payments))
     non_cash = money(sum(p["amount"] for p in payments if p["method"] != "Cash"))
     if paid + 0.001 < total:
-        raise POSError(f"Payment is short by {money(total - paid):.2f}.")
+        raise POSError(_('Payment is short by {amount:.2f}.').format(amount=money(total - paid)))
     if non_cash > total + 0.001:
-        raise POSError("Only cash payments can exceed the total (to give change).")
+        raise POSError(_("Only cash payments can exceed the total (to give change)."))
     change = money(paid - total)
 
     customer = None
     if cart.customer_id:
         customer = db.one("SELECT * FROM customers WHERE id = ?", (cart.customer_id,))
         if not customer:
-            raise POSError("The selected customer no longer exists.")
+            raise POSError(_("The selected customer no longer exists."))
     account_amt = money(sum(p["amount"] for p in payments if p["method"] == "Account"))
     points_amt = money(sum(p["amount"] for p in payments if p["method"] == "Points"))
     point_value = setting_float(settings, "loyalty_point_value", 0.01)
     points_used = 0
     if (account_amt or points_amt) and not customer:
-        raise POSError("Select a customer to pay on account or with loyalty points.")
+        raise POSError(_("Select a customer to pay on account or with loyalty points."))
     if account_amt and customer["credit_limit"] > 0 and \
             customer["balance"] + account_amt > customer["credit_limit"] + 0.001:
-        raise POSError(f"This exceeds the customer's credit limit "
-                       f"({customer['credit_limit']:.2f}).")
+        raise POSError(_("This exceeds the customer's credit limit ({credit_limit:.2f}).").format(
+            credit_limit=customer['credit_limit']))
     if points_amt:
         if point_value <= 0:
-            raise POSError("Loyalty point redemption is disabled.")
+            raise POSError(_("Loyalty point redemption is disabled."))
         points_used = int(round(points_amt / point_value))
         if points_used > customer["loyalty_points"]:
-            raise POSError(f"Customer only has {customer['loyalty_points']} points "
-                           f"(worth {customer['loyalty_points'] * point_value:.2f}).")
+            raise POSError(_('Customer only has {loyalty_points} points (worth {value:.2f}).').format(
+                loyalty_points=customer['loyalty_points'], value=customer['loyalty_points'] * point_value))
 
     allow_negative = setting_bool(settings, "allow_negative_stock")
     created = now()
@@ -215,23 +216,25 @@ def checkout(db: Database, cart: Cart, payments: list[dict], user_id: int,
         for pid, qty in needed.items():
             product = db.one("SELECT name, stock_qty FROM products WHERE id = ?", (pid,))
             if not product:
-                raise POSError("A product in the cart no longer exists.")
+                raise POSError(_("A product in the cart no longer exists."))
             if not allow_negative and product["stock_qty"] < qty:
-                raise POSError(f"Not enough stock for '{product['name']}' "
-                               f"(available {product['stock_qty']}, needed {qty}).")
+                raise POSError(_("Not enough stock for '{name}' (available {stock_qty}, needed {qty}).").format(
+                    name=product['name'], stock_qty=product['stock_qty'], qty=qty))
         seen_serials = set()
         for line in cart.lines:
             if line.track_serial and not line.serial_no:
-                raise POSError(f"'{line.name}' needs a serial number.")
+                raise POSError(_("'{name}' needs a serial number.").format(name=line.name))
             if line.serial_no:
                 key = line.serial_no.lower()
                 if key in seen_serials:
-                    raise POSError(f"Serial {line.serial_no} is in the cart twice.")
+                    raise POSError(_('Serial {serial_no} is in the cart twice.').format(
+                        serial_no=line.serial_no))
                 seen_serials.add(key)
                 sold = db.one("SELECT 1 FROM product_serials WHERE serial_no = ? AND status = 'sold'",
                               (line.serial_no,))
                 if sold:
-                    raise POSError(f"Serial {line.serial_no} has already been sold.")
+                    raise POSError(_('Serial {serial_no} has already been sold.').format(
+                        serial_no=line.serial_no))
 
         points_rate = setting_float(settings, "loyalty_points_per_unit", 0)
         points_earned = int(max(0.0, total - points_amt) * points_rate) if customer else 0
@@ -301,7 +304,7 @@ def get_sale(db: Database, sale_id: int) -> dict:
                      FROM sales s JOIN users u ON u.id = s.user_id
                      LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = ?""", (sale_id,))
     if not sale:
-        raise POSError("Sale not found.")
+        raise POSError(_("Sale not found."))
     return {
         "sale": sale,
         "items": db.query("SELECT * FROM sale_items WHERE sale_id = ? ORDER BY id", (sale_id,)),
@@ -342,7 +345,7 @@ def list_sales(db: Database, date_from: str, date_to: str, search: str = "", use
 # ------------------------------------------------------------------ held sales
 def hold_cart(db: Database, cart: Cart, user_id: int, label: str = "") -> int:
     if not cart.lines:
-        raise POSError("The cart is empty.")
+        raise POSError(_("The cart is empty."))
     return db.insert("held_sales", {
         "label": label, "user_id": user_id, "customer_id": cart.customer_id,
         "data": cart.to_json(), "created_at": now()})
@@ -357,7 +360,7 @@ def list_held(db: Database):
 def resume_held(db: Database, held_id: int) -> Cart:
     row = db.one("SELECT * FROM held_sales WHERE id = ?", (held_id,))
     if not row:
-        raise POSError("Held sale not found.")
+        raise POSError(_("Held sale not found."))
     cart = Cart.from_json(row["data"])
     db.execute("DELETE FROM held_sales WHERE id = ?", (held_id,))
     return cart
@@ -384,18 +387,20 @@ def process_return(db: Database, sale_id: int, items: dict[int, int], reason: st
     """Return items of a sale. `items` maps sale_item_id -> quantity to return."""
     items = {int(k): int(v) for k, v in items.items() if int(v) > 0}
     if not items:
-        raise POSError("Select at least one item to return.")
+        raise POSError(_("Select at least one item to return."))
     if refund_method not in refund_methods(db.get_settings()):
-        raise POSError(f"Unknown refund method: {refund_method}")
+        raise POSError(_('Unknown refund method: {refund_method}').format(
+            refund_method=refund_method))
     sale = db.one("SELECT * FROM sales WHERE id = ?", (sale_id,))
     if not sale:
-        raise POSError("Sale not found.")
+        raise POSError(_("Sale not found."))
     if refund_method == "Account" and not sale["customer_id"]:
-        raise POSError("This sale has no customer, so it cannot be refunded to an account.")
+        raise POSError(_("This sale has no customer, so it cannot be refunded to an account."))
     limit_days = int(setting_float(db.get_settings(), "return_days_limit", 0))
     sale_date = datetime.strptime(sale["created_at"][:10], "%Y-%m-%d").date()
     if limit_days and not override_days and (date.today() - sale_date).days > limit_days:
-        raise POSError(f"This sale is older than the {limit_days}-day return period.")
+        raise POSError(_('This sale is older than the {limit_days}-day return period.').format(
+            limit_days=limit_days))
 
     created = now()
     with db.transaction():
@@ -409,10 +414,11 @@ def process_return(db: Database, sale_id: int, items: dict[int, int], reason: st
         for item_id, qty in items.items():
             item = db.one("SELECT * FROM sale_items WHERE id = ? AND sale_id = ?", (item_id, sale_id))
             if not item:
-                raise POSError("Item does not belong to this sale.")
+                raise POSError(_("Item does not belong to this sale."))
             available = item["qty"] - item["returned_qty"]
             if qty > available:
-                raise POSError(f"Only {available} of '{item['name']}' can be returned.")
+                raise POSError(_("Only {available} of '{name}' can be returned.").format(
+                    available=available, name=item['name']))
             amount = _portion(item["line_total"], item["returned_qty"], qty, item["qty"])
             tax = _portion(item["tax"], item["returned_qty"], qty, item["qty"])
             total = money(total + amount)
@@ -463,7 +469,7 @@ def get_return(db: Database, return_id: int) -> dict:
                     JOIN users u ON u.id = r.user_id
                     LEFT JOIN customers c ON c.id = s.customer_id WHERE r.id = ?""", (return_id,))
     if not ret:
-        raise POSError("Return not found.")
+        raise POSError(_("Return not found."))
     items = db.query("""SELECT ri.*, si.name, si.sku, si.serial_no FROM return_items ri
                         JOIN sale_items si ON si.id = ri.sale_item_id
                         WHERE ri.return_id = ?""", (return_id,))

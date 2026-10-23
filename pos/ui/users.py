@@ -3,35 +3,41 @@ from __future__ import annotations
 
 from tkinter import messagebox, ttk
 
+from ..i18n import _, tr_value
 from ..services import auth
 from .app import View
-from .widgets import DataTable, ask_form, toolbar
+from .widgets import JUSTIFY, W, DataTable, add_tabs, ask_form, toolbar
 
-ROLE_HELP = ("admin: everything   ·   manager: everything except users & settings, can approve "
-             "discounts/returns   ·   cashier: selling, customers, repairs, cash drawer")
+ROLE_HELP = _("admin: everything   ·   manager: everything except users & settings, can approve "
+              "discounts/returns   ·   cashier: selling, customers, repairs, cash drawer")
+
+
+def role_choices():
+    return [(r, tr_value(r)) for r in auth.ROLES]
 
 
 class UsersView(View):
-    title = "Users & Audit Log"
+    title = _("Users & Audit Log")
 
     def __init__(self, parent, app):
         super().__init__(parent, app)
         self.header()
-        ttk.Label(self, text=ROLE_HELP, style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(self, text=ROLE_HELP, style="Muted.TLabel", justify=JUSTIFY, wraplength=1000).pack(
+            anchor=W, pady=(0, 8))
         tabs = ttk.Notebook(self)
         tabs.pack(fill="both", expand=True)
         users_tab = ttk.Frame(tabs, padding=8)
-        toolbar(users_tab, [("+ New user", self.new, "Accent.TButton"), ("Edit", self.edit),
-                            ("Reset password", self.reset)]).pack(fill="x", pady=(0, 8))
+        toolbar(users_tab, [(_("+ New user"), self.new, "Accent.TButton"), (_("Edit"), self.edit),
+                            (_("Reset password"), self.reset)]).pack(fill="x", pady=(0, 8))
         self.table = DataTable(users_tab, [
-            ("username", "Username", 140), ("full_name", "Full name", 200), ("role", "Role", 100),
-            ("active", "Active", 70, lambda v: "Yes" if v else "No"), ("created_at", "Created", 160)],
-            height=14, on_double=lambda r: self.edit())
+            ("username", _("Username"), 140), ("full_name", _("Full name"), 200),
+            ("role", _("Role"), 100, tr_value),
+            ("active", _("Active"), 70, lambda v: _("Yes") if v else _("No")),
+            ("created_at", _("Created"), 160)], height=14, on_double=lambda r: self.edit())
         self.table.pack(fill="both", expand=True)
-        tabs.add(users_tab, text="Users")
-        self.audit = DataTable(tabs, [("created_at", "When", 160), ("username", "User", 100),
-                                      ("action", "Action", 150), ("details", "Details", 500)], height=18)
-        tabs.add(self.audit, text="Audit log (last 1000)")
+        self.audit = DataTable(tabs, [("created_at", _("When"), 160), ("username", _("User"), 100),
+                                      ("action", _("Action"), 150), ("details", _("Details"), 500)], height=18)
+        add_tabs(tabs, [(users_tab, _("Users")), (self.audit, _("Audit log (last 1000)"))])
 
     def on_show(self):
         self.table.set_rows(auth.list_users(self.db), tag_fn=lambda r: None if r["active"] else "muted")
@@ -43,25 +49,25 @@ class UsersView(View):
         def submit(v):
             auth.create_user(self.db, v["username"], v["password"], v["full_name"], v["role"],
                              v["must_change"], self.app.user["id"])
-        if ask_form(self, "New user", [
-                {"key": "username", "label": "Username", "required": True},
-                {"key": "full_name", "label": "Full name"},
-                {"key": "password", "label": "Password", "type": "password", "required": True},
-                {"key": "role", "label": "Role", "type": "combo", "values": list(auth.ROLES),
+        if ask_form(self, _("New user"), [
+                {"key": "username", "label": _("Username"), "required": True},
+                {"key": "full_name", "label": _("Full name")},
+                {"key": "password", "label": _("Password"), "type": "password", "required": True},
+                {"key": "role", "label": _("Role"), "type": "combo", "choices": role_choices(),
                  "default": "cashier"},
-                {"key": "must_change", "label": "Must change password at first login", "type": "check",
+                {"key": "must_change", "label": _("Must change password at first login"), "type": "check",
                  "default": True}], on_submit=submit):
             self.on_show()
 
     def edit(self):
         row = self.table.selected()
         if not row:
-            messagebox.showinfo(self.title, "Select a user first.", parent=self)
+            messagebox.showinfo(self.title, _("Select a user first."), parent=self)
             return
-        if ask_form(self, f"Edit — {row['username']}", [
-                {"key": "full_name", "label": "Full name"},
-                {"key": "role", "label": "Role", "type": "combo", "values": list(auth.ROLES)},
-                {"key": "active", "label": "Active (can sign in)", "type": "check"}], row,
+        if ask_form(self, _("Edit — {name}").format(name=row["username"]), [
+                {"key": "full_name", "label": _("Full name")},
+                {"key": "role", "label": _("Role"), "type": "combo", "choices": role_choices()},
+                {"key": "active", "label": _("Active (can sign in)"), "type": "check"}], row,
                 on_submit=lambda v: auth.update_user(self.db, row["id"], v["full_name"], v["role"],
                                                      v["active"], self.app.user["id"])):
             self.on_show()
@@ -70,9 +76,9 @@ class UsersView(View):
         row = self.table.selected()
         if not row:
             return
-        res = ask_form(self, f"Reset password — {row['username']}", [
-            {"key": "password", "label": "New password", "type": "password", "required": True},
-            {"key": "must_change", "label": "Must change at next login", "type": "check", "default": True}])
+        res = ask_form(self, _("Reset password — {name}").format(name=row["username"]), [
+            {"key": "password", "label": _("New password"), "type": "password", "required": True},
+            {"key": "must_change", "label": _("Must change at next login"), "type": "check", "default": True}])
         if res:
             auth.set_password(self.db, row["id"], res["password"], res["must_change"], self.app.user["id"])
-            messagebox.showinfo(self.title, "Password changed.", parent=self)
+            messagebox.showinfo(self.title, _("Password changed."), parent=self)

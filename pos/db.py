@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 from . import edition
+from .i18n import _
 
 SCHEMA_VERSION = 1
 
@@ -486,7 +487,7 @@ class Database:
             tables = {r[0] for r in src.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'")}
             if not {"products", "sales", "users", "settings"} <= tables:
-                raise POSError("The selected file is not a POS backup.")
+                raise POSError(_("The selected file is not a POS backup."))
             src.backup(self.conn)
         finally:
             src.close()

@@ -15,6 +15,7 @@ import sys
 import webbrowser
 
 from ..db import Database, POSError, app_data_dir, setting_bool, setting_float
+from ..i18n import _, language, plain
 
 LABEL_FORMATS = {
     "html_roll": "Label printer (one label per page, via browser)",
@@ -43,9 +44,10 @@ START_B, START_C, CODE_B, STOP = 104, 105, 100, 106
 def code128_values(text: str) -> list[int]:
     """Symbol values (start, data, checksum, stop). Digit runs use the compact set C."""
     if not text:
-        raise POSError("Nothing to encode.")
+        raise POSError(_("Nothing to encode."))
     if any(not 32 <= ord(ch) <= 126 for ch in text):
-        raise POSError(f"Barcode '{text}' may only contain English letters, digits and symbols.")
+        raise POSError(_("Barcode '{text}' may only contain English letters, digits and symbols.").format(
+            text=text))
     if text.isdigit() and len(text) >= 4:
         even = len(text) - len(text) % 2
         values = [START_C] + [int(text[i:i + 2]) for i in range(0, even, 2)]
@@ -102,7 +104,7 @@ def label_items(db: Database, product_copies: dict[int, int]) -> list[dict]:
         code128_values(code)  # validate before printing anything
         items.append({"name": p["name"], "code": code, "price": p["sell_price"], "copies": int(copies)})
     if not items:
-        raise POSError("Choose at least one label to print.")
+        raise POSError(_("Choose at least one label to print."))
     return items
 
 
@@ -113,7 +115,8 @@ def _label_settings(settings: dict) -> dict:
         "show_price": setting_bool(settings, "label_show_price"),
         "show_shop": setting_bool(settings, "label_show_shop"),
         "symbol": settings.get("currency_symbol", "$"),
-        "shop": settings.get("shop_name", ""),
+        # The Arabic edition prints its Arabic shop name when one is set.
+        "shop": (settings.get("shop_name_ar") if language() == "ar" else "") or settings.get("shop_name", ""),
     }
 
 
@@ -129,8 +132,7 @@ def labels_html(items: list[dict], settings: dict, sheet: bool) -> str:
         cells += [cell] * item["copies"]
     if sheet:
         page = "@page { size: A4; margin: 8mm; }"
-        layout = (f".grid {{ display: flex; flex-wrap: wrap; gap: 2mm; }} "
-                  f".label {{ border: 0.2mm dashed #bbb; }}")
+        layout = ".grid { display: flex; flex-wrap: wrap; gap: 2mm; } .label { border: 0.2mm dashed #bbb; }"
     else:
         page = f"@page {{ size: {w:g}mm {h:g}mm; margin: 0; }}"
         layout = ".label { page-break-after: always; break-after: page; }"
@@ -149,7 +151,8 @@ body {{ margin: 0; font-family: Arial, Tahoma, sans-serif; }}
 @media screen {{ body {{ background: #eee; padding: 10px; }} .label {{ background: #fff; margin: 4px; }}
                  .hint {{ font: 14px Arial; margin-bottom: 8px; }} }}
 @media print {{ .hint {{ display: none; }} }}
-</style></head><body><div class="hint">Press <b>Ctrl+P</b> to print. Set margins to "None" and scale to 100%.</div>
+</style></head><body><div class="hint" dir="auto">{html.escape(plain(_(
+    'Press Ctrl+P to print. Set margins to "None" and scale to 100%.')))}</div>
 <div class="grid">{"".join(cells)}</div></body></html>"""
 
 
@@ -211,11 +214,12 @@ def print_labels(db: Database, product_copies: dict[int, int]) -> str:
             fh.write(data)
         printer = settings.get("label_printer_name", "").strip()
         if printer and sys.platform.startswith("win") and receipts.send_raw(printer, data.encode("ascii")):
-            return f"Sent {count} label(s) to {printer}."
-        return (f"Saved {count} label(s) as {fmt.upper()} commands to\n{path}\n\n"
-                "To print directly, install pywin32 and set the label printer name in Settings.")
+            return _("Sent {count} label(s) to {printer}.").format(count=count, printer=printer)
+        return _("Saved {count} label(s) as {format} commands to\n{path}\n\nTo print directly, install "
+                 "pywin32 and set the label printer name in Settings.").format(
+            count=count, format=fmt.upper(), path=path)
     path = os.path.join(folder, "labels.html")
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(labels_html(items, settings, sheet=fmt == "html_sheet"))
     webbrowser.open("file://" + os.path.abspath(path).replace("\\", "/"))
-    return f"{count} label(s) opened in your web browser. Press Ctrl+P there to print."
+    return _("{count} label(s) opened in your web browser. Press Ctrl+P there to print.").format(count=count)

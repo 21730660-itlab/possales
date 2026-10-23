@@ -1,30 +1,42 @@
-# Setup guide — Electronics POS
+# Setup guide
 
 ## 1. Install the program
 
+There are two programs. Download the one you need — or both, they don't share data:
+
+| Setup file | Program | Language |
+|---|---|---|
+| `POS_Setup_<version>.exe` | Electronics POS | English |
+| `ShopPOS_Arabic_Setup_<version>.exe` | Shop POS — نظام المتجر | Arabic |
+
 ### Option A — Installer (recommended, no Python needed)
 
-1. Download **`POS_Setup_<version>.exe`** from the
+1. Download the setup file from the
    **[latest release](https://github.com/21730660-itlab/possales/releases/latest)**.
 2. Double-click it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**.
    This warning appears because the installer is not code-signed; it is expected.
 3. Click **Next** through the steps and keep **"Create a desktop shortcut"** ticked.
-4. Start **Electronics POS** from the desktop shortcut.
+4. Start the program from the desktop shortcut (**Electronics POS** or **نظام المتجر - Shop POS**).
 
-The program is installed in `C:\Program Files\Electronics POS`.
-Your shop data is kept in **`C:\ProgramData\ElectronicsPOS`**. Uninstalling does **not** delete it.
+| | Electronics POS | Shop POS (Arabic) |
+|---|---|---|
+| Program folder | `C:\Program Files\Electronics POS` | `C:\Program Files\Shop POS` |
+| Shop data | `C:\ProgramData\ElectronicsPOS` | `C:\ProgramData\ShopPOS` |
+
+Uninstalling does **not** delete the shop data.
 
 **Updating:** run the newer `POS_Setup_….exe` over the old one. Your data stays in place.
 
 **Publishing a new version (for whoever maintains the code):** raise `__version__` in
 `pos/__init__.py`, push, then on GitHub open **Actions → Build Windows installer → Run workflow**
-and enter the new tag (e.g. `v1.2.0`). The installer is built, tested and published as a release.
+and enter the new tag (e.g. `v1.4.0`). Both installers are built, tested and published as a release.
 
 ### Option B — Run with Python
 
 1. Install Python 3.10+ from <https://www.python.org/downloads/> and tick **"Add python.exe to PATH"**.
 2. Download the project (GitHub → **Code → Download ZIP**) and unzip it.
-3. Double-click **`run_pos.bat`**. Data is kept in the `data` folder next to it.
+3. Double-click **`run_pos.bat`** (Electronics POS) or **`run_shop_arabic.bat`** (Arabic Shop POS).
+   Data is kept in the `data` / `data_shop_ar` folder next to it.
 
 ## 2. First start (10 minutes)
 
@@ -50,7 +62,7 @@ and enter the new tag (e.g. `v1.2.0`). The installer is built, tested and publis
 - Phones / laptops / TVs: tick **Track serial / IMEI numbers** and set the warranty months.
 - Products with no barcode: select them → **Generate missing barcodes** → **🏷 Print labels**.
 
-To try the program first, **Settings → Load sample electronics data** adds demo products.
+To try the program first, **Settings → Load sample data** adds demo products.
 
 ## 4. Connect the hardware
 

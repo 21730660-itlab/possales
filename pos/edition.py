@@ -26,6 +26,8 @@ EDITIONS = {
         "settings": {
             "shop_name": "Shop",
             "shop_name_ar": "المتجر",
+            "shop_address": "",
+            "secondary_currency": "ل.ل",
             "receipt_language": "ar",
             "receipt_footer": "Thank you for shopping with us!",
             "receipt_footer_ar": "شكراً لتسوقكم معنا!",

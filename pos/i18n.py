@@ -31,13 +31,33 @@ def is_rtl() -> bool:
     return _current in RTL_LANGUAGES
 
 
+# Windows draws mixed Arabic / number / English text in the wrong order unless the text is
+# marked as a right-to-left run (tools/tk_arabic_probe.py shows the difference on Windows).
+RLE, PDF = "\u202b", "\u202c"
+
+
 def _(text: str) -> str:
     """Translate `text` into the current language (unchanged when there is no translation)."""
-    return _catalog.get(text, text)
+    translated = _catalog.get(text)
+    if translated is None:
+        return text
+    return RLE + translated + PDF if _current in RTL_LANGUAGES else translated
 
 
 def tr_value(value) -> str:
     """Translate a stored English value (status, role, method...) for display."""
     if value is None:
         return ""
-    return _catalog.get(str(value), str(value))
+    return _(str(value))
+
+
+def plain(text: str) -> str:
+    """Remove direction marks, e.g. before saving text the user picked from a translated list."""
+    return text.replace(RLE, "").replace(PDF, "") if text else text
+
+
+def tr_reason(value) -> str:
+    """Translate a stored "Reason: free note" text, leaving the note as typed."""
+    text = "" if value is None else str(value)
+    head, sep, note = text.partition(": ")
+    return tr_value(head) + (sep + note if sep else "")

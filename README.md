@@ -1,27 +1,38 @@
-# Electronics POS
+# Electronics POS / Shop POS
 
-A complete point-of-sale system for an electronics shop. It runs on Windows with Python and needs
+A complete point-of-sale system for shops. It runs on Windows with Python and needs
 **no extra packages**: it uses only Tkinter and SQLite, which come with Python.
+
+It comes in **two editions**, built from the same code:
+
+| Edition | Installer | Interface |
+|---|---|---|
+| **Electronics POS** | `POS_Setup_<version>.exe` | English |
+| **Shop POS — نظام المتجر** | `ShopPOS_Arabic_Setup_<version>.exe` | **Arabic, right-to-left**; Arabic receipts |
+
+Both can be installed on the same computer. Each has its own desktop shortcut and its own data.
+Either edition can switch its interface language later in **Settings → Shop → Interface language**.
 
 **➡ Full installation and shop setup instructions: [SETUP.md](SETUP.md)**
 
 ## Quick start (Windows)
 
-**Easiest:** download the installer from the
-**[latest release](https://github.com/21730660-itlab/possales/releases/latest)**
-(`POS_Setup_<version>.exe`), double-click it, then start **Electronics POS** from the desktop.
+**Easiest:** download the installer you want from the
+**[latest release](https://github.com/21730660-itlab/possales/releases/latest)**, double-click it,
+then start the program from the desktop.
 
 **Or run it with Python:**
 
 1. Install **Python 3.10 or newer** from <https://www.python.org/downloads/>. During setup, tick
    **"Add python.exe to PATH"**.
-2. Double-click **`run_pos.bat`** (or run `python main.py`).
+2. Double-click **`run_pos.bat`** for Electronics POS, or **`run_shop_arabic.bat`** for the Arabic
+   Shop POS (or run `python main.py`; set `POS_EDITION=shop_ar` for the Arabic edition).
 3. Sign in with **`admin` / `admin`**. You will be asked to choose a new password.
-4. Optional: go to **Settings → Load sample electronics data** to try the system with demo products.
+4. Optional: go to **Settings → Load sample data** to try the system with demo products.
 5. Go to **Settings** and enter your shop name, address, tax rate, currency and exchange rate.
 
-To build the installer yourself, run **`build_installer.bat`** (needs Python and the free
-[Inno Setup 6](https://jrsoftware.org/isdl.php)). It creates `dist\POS_Setup_<version>.exe`.
+To build the installers yourself, run **`build_installer.bat`** (needs Python and the free
+[Inno Setup 6](https://jrsoftware.org/isdl.php)). It creates both setup files in `dist\`.
 For a single portable `POS.exe` with no installer, run **`build_exe.bat`**.
 
 ## Features
@@ -122,8 +133,9 @@ Browser labels support Arabic product names. The direct ZPL/TSPL modes print Eng
 
 ## Data
 
-Everything is stored in the data folder — `C:\ProgramData\ElectronicsPOS` when installed with the
-installer, or the `data` folder next to the program otherwise:
+Everything is stored in the data folder — `C:\ProgramData\ElectronicsPOS` (or
+`C:\ProgramData\ShopPOS` for the Arabic edition) when installed with the installer, or the `data`
+folder (`data_shop_ar`) next to the program otherwise:
 
 | Path | Contents |
 |---|---|
@@ -138,12 +150,14 @@ Copy the whole data folder to move the shop to another PC.
 ## Development
 
 ```
-python -m unittest        # run the test suite
+python -m unittest        # run the test suite (also checks every text has an Arabic translation)
 ```
 
 | Path | Contents |
 |---|---|
 | `pos/db.py` | database schema, settings, transactions, backup |
 | `pos/services/` | business logic (no UI): sales, catalog, purchasing, people, operations, reports, receipts, auth |
-| `pos/ui/` | Tkinter screens |
+| `pos/ui/` | Tkinter screens (mirror automatically for right-to-left languages) |
+| `pos/i18n.py`, `pos/locale_ar.py` | interface translation and the Arabic texts |
+| `pos/edition.py` | the two editions (name, language, data folder) |
 | `tests/` | unit tests for the business logic |

@@ -5,18 +5,20 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ..db import POSError, money, setting_bool, setting_float
+from ..i18n import _, tr_value
 from ..services import catalog, operations, people, receipts, sales
 from .app import View
-from .widgets import (COLORS, FONT_FAMILY, DataTable, Dialog, FlowFrame, SearchBar, TextPreview,
-                      ask_form, ask_value, fmt_money, parse_float, require_permission, toolbar)
+from .widgets import (COLORS, END, FONT_FAMILY, START, W, DataTable, Dialog, FlowFrame, SearchBar,
+                      TextPreview, ask_form, ask_value, fmt_money, pad, parse_float,
+                      require_permission, toolbar)
 
-SHORTCUTS = ("Enter: add scanned code   F2: qty   F3: find product   F4: line discount   "
-             "F5: price   F6: order discount   F7: customer   F8: hold   F9: recall   "
-             "Del: remove   F12: PAY")
+SHORTCUTS = _("Enter: add scanned code   F2: qty   F3: find product   F4: line discount   "
+              "F5: price   F6: order discount   F7: customer   F8: hold   F9: recall   "
+              "Del: remove   F12: PAY")
 
 
 class SalesView(View):
-    title = "New Sale"
+    title = _("New Sale")
 
     def __init__(self, parent, app):
         super().__init__(parent, app)
@@ -29,88 +31,88 @@ class SalesView(View):
     def _build(self):
         # The totals panel is packed first so it keeps its width on small screens.
         right = ttk.Frame(self, style="Panel.TFrame", padding=16, width=380)
-        right.pack(side="right", fill="y", padx=(16, 0))
+        right.pack(side=END, fill="y", padx=pad(16, 0))
         right.pack_propagate(False)
         left = ttk.Frame(self)
-        left.pack(side="left", fill="both", expand=True)
+        left.pack(side=START, fill="both", expand=True)
 
         scan = ttk.Frame(left)
         scan.pack(fill="x")
-        ttk.Label(scan, text="Scan barcode / SKU / serial, or type a name:",
-                  style="H2.TLabel").pack(anchor="w")
+        ttk.Label(scan, text=_("Scan barcode / SKU / serial, or type a name:"),
+                  style="H2.TLabel").pack(anchor=W)
         row = ttk.Frame(scan)
         row.pack(fill="x", pady=(4, 10))
         self.code_var = tk.StringVar()
         self.code_entry = ttk.Entry(row, textvariable=self.code_var, font=(FONT_FAMILY, 16))
-        self.code_entry.pack(side="left", fill="x", expand=True, ipady=4)
+        self.code_entry.pack(side=START, fill="x", expand=True, ipady=4)
         self.code_entry.bind("<Return>", lambda e: self.add_code())
-        ttk.Label(row, text=" Qty").pack(side="left")
+        ttk.Label(row, text=" " + _("Qty")).pack(side=START)
         self.qty_var = tk.StringVar(value="1")
         ttk.Spinbox(row, from_=1, to=9999, textvariable=self.qty_var, width=5,
-                    font=(FONT_FAMILY, 14)).pack(side="left", padx=6)
-        ttk.Button(row, text="Add", style="Accent.TButton", command=self.add_code).pack(side="left")
-        ttk.Button(row, text="🔍 Find (F3)", command=self.find_product).pack(side="left", padx=(6, 0))
+                    font=(FONT_FAMILY, 14)).pack(side=START, padx=6)
+        ttk.Button(row, text=_("Add"), style="Accent.TButton", command=self.add_code).pack(side=START)
+        ttk.Button(row, text=_("🔍 Find (F3)"), command=self.find_product).pack(side=START, padx=pad(6, 0))
 
         self.table = DataTable(left, [
-            ("n", "#", 36), ("name", "Item", 210), ("serial_no", "Serial / IMEI", 140),
-            ("qty", "Qty", -50), ("price", "Price", -85), ("discount", "Discount", -80),
-            ("total", "Total", -95)], height=14, on_double=lambda r: self.change_qty())
+            ("n", "#", 36), ("name", _("Item"), 210), ("serial_no", _("Serial / IMEI"), 140),
+            ("qty", _("Qty"), -50), ("price", _("Price"), -85), ("discount", _("Discount"), -80),
+            ("total", _("Total"), -95)], height=14, on_double=lambda r: self.change_qty())
         # Bottom widgets are packed first (bottom-up) so the cart table takes whatever height is left.
         hint = ttk.Label(left, text=SHORTCUTS, style="Muted.TLabel", wraplength=680)
-        hint.pack(anchor="w", pady=(8, 0), side="bottom")
-        toolbar(left, [("Qty (F2)", self.change_qty), ("+  1", lambda: self.bump_qty(1)),
-                       ("−  1", lambda: self.bump_qty(-1)), ("Discount (F4)", self.line_discount),
-                       ("Price (F5)", self.change_price), ("Remove (Del)", self.remove_line), None,
-                       ("Clear sale", self.clear_sale, "Danger.TButton")]).pack(
+        hint.pack(anchor=W, pady=(8, 0), side="bottom")
+        toolbar(left, [(_("Qty (F2)"), self.change_qty), ("+  1", lambda: self.bump_qty(1)),
+                       ("−  1", lambda: self.bump_qty(-1)), (_("Discount (F4)"), self.line_discount),
+                       (_("Price (F5)"), self.change_price), (_("Remove (Del)"), self.remove_line), None,
+                       (_("Clear sale"), self.clear_sale, "Danger.TButton")]).pack(
             fill="x", pady=(10, 0), side="bottom")
         self.table.pack(fill="both", expand=True)
 
-        # Right side: customer, totals and payment.
-        ttk.Label(right, text="Customer", style="CardTitle.TLabel").pack(anchor="w")
-        self.cust_label = ttk.Label(right, text="Walk-in customer", style="Panel.TLabel",
+        # Totals side: customer, totals and payment.
+        ttk.Label(right, text=_("Customer"), style="CardTitle.TLabel").pack(anchor=W)
+        self.cust_label = ttk.Label(right, text=_("Walk-in customer"), style="Panel.TLabel",
                                     font=(FONT_FAMILY, 13, "bold"), wraplength=340)
-        self.cust_label.pack(anchor="w")
+        self.cust_label.pack(anchor=W)
         self.cust_info = ttk.Label(right, text="", style="CardTitle.TLabel", wraplength=340)
-        self.cust_info.pack(anchor="w")
+        self.cust_info.pack(anchor=W)
         cb = ttk.Frame(right, style="Panel.TFrame")
         cb.pack(fill="x", pady=(6, 12))
-        ttk.Button(cb, text="Select (F7)", command=self.select_customer).pack(side="left")
-        ttk.Button(cb, text="Remove", command=self.clear_customer).pack(side="left", padx=6)
+        ttk.Button(cb, text=_("Select (F7)"), command=self.select_customer).pack(side=START)
+        ttk.Button(cb, text=_("Remove"), command=self.clear_customer).pack(side=START, padx=6)
         ttk.Separator(right).pack(fill="x", pady=6)
 
         self.sum_labels = {}
-        for key, text in (("items", "Items"), ("subtotal", "Subtotal"), ("discount_total", "Discount"),
-                          ("tax_total", "Tax")):
+        for key, text in (("items", _("Items")), ("subtotal", _("Subtotal")),
+                          ("discount_total", _("Discount")), ("tax_total", _("Tax"))):
             line = ttk.Frame(right, style="Panel.TFrame")
             line.pack(fill="x", pady=2)
             lbl = ttk.Label(line, text=text, style="Panel.TLabel", font=(FONT_FAMILY, 13))
-            lbl.pack(side="left")
+            lbl.pack(side=START)
             val = ttk.Label(line, text="0", style="Panel.TLabel", font=(FONT_FAMILY, 13))
-            val.pack(side="right")
+            val.pack(side=END)
             self.sum_labels[key] = val
             if key == "tax_total":
                 self.tax_name_label = lbl
         ttk.Separator(right).pack(fill="x", pady=8)
-        ttk.Label(right, text="TOTAL", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(right, text=_("TOTAL"), style="CardTitle.TLabel").pack(anchor=W)
         self.total_label = ttk.Label(right, text="$0.00", style="Total.TLabel")
         self.total_label.pack(anchor="e")
         self.alt_label = ttk.Label(right, text="", style="CardTitle.TLabel", font=(FONT_FAMILY, 13))
         self.alt_label.pack(anchor="e")
 
-        ttk.Button(right, text="💳  PAY  (F12)", style="Pay.TButton", command=self.pay).pack(
+        ttk.Button(right, text=_("💳  PAY  (F12)"), style="Pay.TButton", command=self.pay).pack(
             fill="x", pady=(16, 8), side="bottom")
         ob = ttk.Frame(right, style="Panel.TFrame")
         ob.pack(fill="x", side="bottom")
-        ttk.Button(ob, text="Order discount (F6)", command=self.order_discount).pack(fill="x", pady=2)
+        ttk.Button(ob, text=_("Order discount (F6)"), command=self.order_discount).pack(fill="x", pady=2)
         hb = ttk.Frame(ob, style="Panel.TFrame")
         hb.pack(fill="x", pady=2)
-        ttk.Button(hb, text="Hold (F8)", command=self.hold).pack(side="left", fill="x", expand=True)
-        ttk.Button(hb, text="Recall (F9)", command=self.recall).pack(side="left", fill="x",
-                                                                    expand=True, padx=(6, 0))
-        ttk.Button(ob, text="Note", command=self.edit_note).pack(fill="x", pady=2)
-        ttk.Button(ob, text="Open cash drawer", command=self.kick_drawer).pack(fill="x", pady=2)
+        ttk.Button(hb, text=_("Hold (F8)"), command=self.hold).pack(side=START, fill="x", expand=True)
+        ttk.Button(hb, text=_("Recall (F9)"), command=self.recall).pack(side=START, fill="x",
+                                                                       expand=True, padx=pad(6, 0))
+        ttk.Button(ob, text=_("Note"), command=self.edit_note).pack(fill="x", pady=2)
+        ttk.Button(ob, text=_("Open cash drawer"), command=self.kick_drawer).pack(fill="x", pady=2)
         self.held_label = ttk.Label(ob, text="", style="CardTitle.TLabel")
-        self.held_label.pack(anchor="w", pady=(4, 0))
+        self.held_label.pack(anchor=W, pady=(4, 0))
 
     def on_show(self):
         top = self.winfo_toplevel()
@@ -158,17 +160,17 @@ class SalesView(View):
             text=("-" if t["discount_total"] else "") + fmt_money(t["discount_total"], sym))
         self.sum_labels["tax_total"].configure(text=fmt_money(t["tax_total"], sym))
         self.tax_name_label.configure(
-            text=f"{settings.get('tax_name', 'Tax')} ({setting_float(settings, 'tax_rate'):g}%)")
+            text=f"{tr_value(settings.get('tax_name', 'Tax'))} ({setting_float(settings, 'tax_rate'):g}%)")
         self.total_label.configure(text=fmt_money(t["total"], sym))
         alt = receipts.secondary(t["total"], settings)
         self.alt_label.configure(text=alt or "")
         held = len(sales.list_held(self.db))
-        self.held_label.configure(text=f"{held} sale(s) on hold" if held else "")
+        self.held_label.configure(text=_("{count} sale(s) on hold").format(count=held) if held else "")
         self._refresh_customer()
 
     def _refresh_customer(self):
         if not self.cart.customer_id:
-            self.cust_label.configure(text="Walk-in customer")
+            self.cust_label.configure(text=_("Walk-in customer"))
             self.cust_info.configure(text="")
             return
         try:
@@ -178,16 +180,16 @@ class SalesView(View):
             return self._refresh_customer()
         self.cust_label.configure(text=c["name"])
         bits = [c["phone"]] if c["phone"] else []
-        bits.append(f"Points: {c['loyalty_points']}")
+        bits.append(_("Points: {points}").format(points=c["loyalty_points"]))
         if c["balance"]:
-            bits.append(f"Owes: {fmt_money(c['balance'], self.currency)}")
+            bits.append(_("Owes: {amount}").format(amount=fmt_money(c["balance"], self.currency)))
         self.cust_info.configure(text="   ".join(bits))
 
     def selected_line(self, quiet=False):
         row = self.table.selected()
         if row is None:
             if not quiet:
-                messagebox.showinfo("Sale", "Select a line in the cart first.", parent=self)
+                messagebox.showinfo(_("Sale"), _("Select a line in the cart first."), parent=self)
             return None, None
         return row["id"], self.cart.lines[row["id"]]
 
@@ -222,7 +224,7 @@ class SalesView(View):
 
     def add_product(self, product, qty=1, serial=""):
         if product["track_serial"] and not serial:
-            for _ in range(qty):
+            for _n in range(qty):
                 serial = SerialPicker(self, self.db, product, self.cart).show()
                 if not serial:
                     break
@@ -234,12 +236,12 @@ class SalesView(View):
 
     def _add(self, product, qty, serial):
         if serial and any(l.serial_no.lower() == serial.lower() for l in self.cart.lines):
-            raise POSError(f"Serial {serial} is already in the cart.")
+            raise POSError(_("Serial {serial} is already in the cart.").format(serial=serial))
         in_cart = sum(l.qty for l in self.cart.lines if l.product_id == product["id"])
         allow_neg = setting_bool(self.db.get_settings(), "allow_negative_stock")
         stock = self.db.scalar("SELECT stock_qty FROM products WHERE id = ?", (product["id"],), 0)
         if not allow_neg and in_cart + qty > stock:
-            raise POSError(f"Only {stock} of '{product['name']}' in stock.")
+            raise POSError(_("Only {stock} of '{name}' in stock.").format(stock=stock, name=product["name"]))
         self.cart.add_product(product, qty, serial)
 
     # ---------------------------------------------------------- line actions
@@ -248,8 +250,8 @@ class SalesView(View):
         if line is None:
             return
         if line.serial_no:
-            raise POSError("Items with a serial number are sold one per line.")
-        qty = ask_value(self, "Quantity", f"Quantity for {line.name}", "int", line.qty)
+            raise POSError(_("Items with a serial number are sold one per line."))
+        qty = ask_value(self, _("Quantity"), _("Quantity for {name}").format(name=line.name), "int", line.qty)
         if qty is None:
             return
         self._set_qty(line, qty)
@@ -259,7 +261,7 @@ class SalesView(View):
         if line is None:
             return
         if line.serial_no:
-            raise POSError("Items with a serial number are sold one per line.")
+            raise POSError(_("Items with a serial number are sold one per line."))
         self._set_qty(line, line.qty + delta)
 
     def _set_qty(self, line, qty):
@@ -269,7 +271,7 @@ class SalesView(View):
             stock = self.db.scalar("SELECT stock_qty FROM products WHERE id = ?", (line.product_id,), 0)
             other = sum(l.qty for l in self.cart.lines if l.product_id == line.product_id and l is not line)
             if not setting_bool(self.db.get_settings(), "allow_negative_stock") and qty + other > stock:
-                raise POSError(f"Only {stock} of '{line.name}' in stock.")
+                raise POSError(_("Only {stock} of '{name}' in stock.").format(stock=stock, name=line.name))
             line.qty = qty
             line.discount = min(line.discount, line.gross)
         self.refresh_cart()
@@ -284,8 +286,8 @@ class SalesView(View):
         idx, line = self.selected_line()
         if line is None:
             return
-        res = DiscountDialog(self, f"Discount — {line.name}", line.gross, line.discount,
-                             self.currency).show()
+        res = DiscountDialog(self, _("Discount — {name}").format(name=line.name), line.gross,
+                             line.discount, self.currency).show()
         if res is None:
             return
         old = line.discount
@@ -298,7 +300,7 @@ class SalesView(View):
         if not self.cart.lines:
             return
         base = money(sum(l.gross - l.discount for l in self.cart.lines))
-        res = DiscountDialog(self, "Order discount", base, self.cart.order_discount, self.currency).show()
+        res = DiscountDialog(self, _("Order discount"), base, self.cart.order_discount, self.currency).show()
         if res is None:
             return
         old = self.cart.order_discount
@@ -313,26 +315,29 @@ class SalesView(View):
         if pct <= limit + 1e-9:
             return True
         return require_permission(self, self.app, "discount_override",
-                                  f"A discount of {pct:.1f}% is above the {limit:g}% limit.")
+                                  _("A discount of {pct}% is above the {limit}% limit.").format(
+                                      pct=f"{pct:.1f}", limit=f"{limit:g}"))
 
     def change_price(self):
         idx, line = self.selected_line()
         if line is None:
             return
-        if not require_permission(self, self.app, "price_override", "Changing an item price."):
+        if not require_permission(self, self.app, "price_override", _("Changing an item price.")):
             return
-        price = ask_value(self, "Price", f"Unit price for {line.name}", "float", f"{line.unit_price:.2f}")
+        price = ask_value(self, _("Price"), _("Unit price for {name}").format(name=line.name), "float",
+                          f"{line.unit_price:.2f}")
         if price is None:
             return
         if price < 0:
-            raise POSError("Price cannot be negative.")
+            raise POSError(_("Price cannot be negative."))
         line.unit_price = money(price)
         line.discount = min(line.discount, line.gross)
         self.refresh_cart()
 
     def edit_note(self):
-        res = ask_form(self, "Sale note", [{"key": "notes", "label": "Note (printed on invoice)",
-                                            "type": "multiline"}], {"notes": self.cart.notes}, ok_text="OK")
+        res = ask_form(self, _("Sale note"), [{"key": "notes", "label": _("Note (printed on invoice)"),
+                                               "type": "multiline"}], {"notes": self.cart.notes},
+                       ok_text=_("OK"))
         if res is not None:
             self.cart.notes = res["notes"]
 
@@ -351,8 +356,8 @@ class SalesView(View):
     def hold(self):
         if not self.cart.lines:
             return
-        res = ask_form(self, "Hold sale", [{"key": "label", "label": "Label (e.g. customer name)"}],
-                       ok_text="Hold")
+        res = ask_form(self, _("Hold sale"), [{"key": "label", "label": _("Label (e.g. customer name)")}],
+                       ok_text=_("Hold"))
         if res is None:
             return
         sales.hold_cart(self.db, self.cart, self.app.user["id"], res["label"])
@@ -362,21 +367,21 @@ class SalesView(View):
     def recall(self):
         held = sales.list_held(self.db)
         if not held:
-            messagebox.showinfo("Recall", "There are no held sales.", parent=self)
+            messagebox.showinfo(_("Recall"), _("There are no held sales."), parent=self)
             return
         if self.cart.lines and not messagebox.askyesno(
-                "Recall", "Put the current cart on hold first?", parent=self):
+                _("Recall"), _("Put the current cart on hold first?"), parent=self):
             return
         held_id = HeldPicker(self, self.db, held).show()
         if not held_id:
             return
         if self.cart.lines:
-            sales.hold_cart(self.db, self.cart, self.app.user["id"], "Auto-held")
+            sales.hold_cart(self.db, self.cart, self.app.user["id"], _("Auto-held"))
         self.cart = sales.resume_held(self.db, held_id)
         self.refresh_cart()
 
     def clear_sale(self):
-        if self.cart.lines and not messagebox.askyesno("Clear", "Remove all items from this sale?",
+        if self.cart.lines and not messagebox.askyesno(_("Clear"), _("Remove all items from this sale?"),
                                                        parent=self):
             return
         self.cart = sales.Cart()
@@ -384,19 +389,21 @@ class SalesView(View):
         self.code_entry.focus_set()
 
     def kick_drawer(self):
-        if not require_permission(self, self.app, "shifts", "Opening the cash drawer."):
+        if not require_permission(self, self.app, "shifts", _("Opening the cash drawer.")):
             return
         self.db.log(self.app.user["id"], "drawer.open", "no sale")
         if not receipts.open_cash_drawer(self.db):
-            messagebox.showinfo("Cash drawer", "No receipt printer with a cash drawer is configured "
-                                "(Settings → Printer name, requires pywin32).", parent=self)
+            messagebox.showinfo(_("Cash drawer"), _("No receipt printer with a cash drawer is configured "
+                                                    "(Settings → Printer name, requires pywin32)."),
+                                parent=self)
 
     # ------------------------------------------------------------------ pay
     def ensure_shift(self):
         shift_id = self.app.current_shift_id()
         if shift_id or not setting_bool(self.db.get_settings(), "require_open_shift"):
             return shift_id or None, True
-        amount = ask_value(self, "Open shift", "No shift is open. Opening cash in drawer:", "float", "0")
+        amount = ask_value(self, _("Open shift"), _("No shift is open. Opening cash in drawer:"),
+                           "float", "0")
         if amount is None:
             return None, False
         shift_id = operations.open_shift(self.db, self.app.user["id"], amount)
@@ -405,7 +412,7 @@ class SalesView(View):
 
     def pay(self):
         if not self.cart.lines:
-            messagebox.showinfo("Pay", "The cart is empty.", parent=self)
+            messagebox.showinfo(_("Pay"), _("The cart is empty."), parent=self)
             return
         shift_id, ok = self.ensure_shift()
         if not ok:
@@ -432,15 +439,16 @@ class SalesView(View):
             try:
                 do_print()
             except Exception as exc:
-                messagebox.showerror("Print", f"Could not print the receipt: {exc}", parent=self)
+                messagebox.showerror(_("Print"), _("Could not print the receipt: {error}").format(error=exc),
+                                     parent=self)
         else:
             receipts.save_text(text, sale["invoice_no"])
             if drawer:
                 receipts.open_cash_drawer(self.db)
         change = sale["change_due"]
-        title = f"Sale complete — {sale['invoice_no']}"
+        title = _("Sale complete — {invoice}").format(invoice=sale["invoice_no"])
         if change:
-            title += f"   CHANGE: {fmt_money(change, self.currency)}"
+            title += "   " + _("CHANGE: {amount}").format(amount=fmt_money(change, self.currency))
         TextPreview(self, title, text, on_print=do_print).show()
         self.code_entry.focus_set()
 
@@ -448,16 +456,16 @@ class SalesView(View):
 # =============================================================== dialogs
 class ProductPicker(Dialog):
     def __init__(self, parent, app, search=""):
-        super().__init__(parent, "Find product")
+        super().__init__(parent, _("Find product"))
         self.db = app.db
-        self.search = SearchBar(self.body, self.reload, "name, SKU, barcode or brand", width=40)
+        self.search = SearchBar(self.body, self.reload, _("name, SKU, barcode or brand"), width=40)
         self.search.pack(fill="x")
         self.table = DataTable(self.body, [
-            ("sku", "SKU", 100), ("name", "Name", 320), ("brand", "Brand", 110),
-            ("stock_qty", "Stock", -70), ("sell_price", "Price", -100, lambda v: f"{v:,.2f}"),
-            ("location", "Location", 90)], height=14, on_double=self.choose)
+            ("sku", _("SKU"), 100), ("name", _("Name"), 320), ("brand", _("Brand"), 110),
+            ("stock_qty", _("Stock"), -70), ("sell_price", _("Price"), -100, lambda v: f"{v:,.2f}"),
+            ("location", _("Location"), 90)], height=14, on_double=self.choose)
         self.table.pack(fill="both", expand=True, pady=10)
-        self.buttons(ok_text="Add to sale")
+        self.buttons(ok_text=_("Add to sale"))
         self.search.var.set(search)
         self.reload()
         self.search.entry.bind("<Down>", lambda e: (self.table.tree.focus_set(), self.table.select_first()))
@@ -481,11 +489,11 @@ class ProductPicker(Dialog):
 
 class SerialPicker(Dialog):
     def __init__(self, parent, db, product, cart):
-        super().__init__(parent, f"Serial / IMEI — {product['name']}")
+        super().__init__(parent, _("Serial / IMEI — {name}").format(name=product["name"]))
         in_cart = {l.serial_no.lower() for l in cart.lines if l.serial_no}
         serials = [s for s in catalog.list_serials(db, product["id"], "in_stock")
                    if s["serial_no"].lower() not in in_cart]
-        ttk.Label(self.body, text="Scan or type the serial number, or pick one in stock:").pack(anchor="w")
+        ttk.Label(self.body, text=_("Scan or type the serial number, or pick one in stock:")).pack(anchor=W)
         self.var = tk.StringVar()
         e = ttk.Entry(self.body, textvariable=self.var, font=(FONT_FAMILY, 14), width=34)
         e.pack(fill="x", pady=8)
@@ -496,9 +504,9 @@ class SerialPicker(Dialog):
         self.listbox.bind("<<ListboxSelect>>", lambda ev: self._pick())
         self.listbox.bind("<Double-1>", lambda ev: self.ok())
         if not serials:
-            ttk.Label(self.body, text="No serials registered in stock — type the serial from the box.",
-                      style="Muted.TLabel").pack(anchor="w")
-        self.buttons(ok_text="Use serial")
+            ttk.Label(self.body, text=_("No serials registered in stock — type the serial from the box."),
+                      style="Muted.TLabel").pack(anchor=W)
+        self.buttons(ok_text=_("Use serial"))
         e.bind("<Return>", lambda ev: self.ok())
         self.after(50, e.focus_set)
 
@@ -510,7 +518,7 @@ class SerialPicker(Dialog):
     def ok(self):
         value = self.var.get().strip()
         if not value:
-            messagebox.showwarning(self.title(), "Enter a serial number.", parent=self)
+            messagebox.showwarning(self.title(), _("Enter a serial number."), parent=self)
             return
         self.result = value
         self.destroy()
@@ -520,38 +528,39 @@ class DiscountDialog(Dialog):
     def __init__(self, parent, title, base, current, symbol):
         super().__init__(parent, title)
         self.base = base
-        ttk.Label(self.body, text=f"Amount before discount: {fmt_money(base, symbol)}").pack(anchor="w")
+        ttk.Label(self.body, text=_("Amount before discount: {amount}").format(
+            amount=fmt_money(base, symbol))).pack(anchor=W)
         self.mode = tk.StringVar(value="percent")
         f = ttk.Frame(self.body)
         f.pack(fill="x", pady=8)
-        ttk.Radiobutton(f, text="Percent %", variable=self.mode, value="percent").pack(side="left")
-        ttk.Radiobutton(f, text=f"Amount {symbol}", variable=self.mode, value="amount").pack(
-            side="left", padx=12)
+        ttk.Radiobutton(f, text=_("Percent %"), variable=self.mode, value="percent").pack(side=START)
+        ttk.Radiobutton(f, text=_("Amount {symbol}").format(symbol=symbol), variable=self.mode,
+                        value="amount").pack(side=START, padx=12)
         self.var = tk.StringVar(value=f"{current * 100 / base:g}" if current and base else "")
         e = ttk.Entry(self.body, textvariable=self.var, font=(FONT_FAMILY, 14))
         e.pack(fill="x")
         quick = ttk.Frame(self.body)
         quick.pack(fill="x", pady=8)
         for pct in (5, 10, 15, 20, 0):
-            ttk.Button(quick, text=f"{pct}%" if pct else "None",
+            ttk.Button(quick, text=f"{pct}%" if pct else _("None"),
                        command=lambda p=pct: (self.mode.set("percent"), self.var.set(str(p)), self.ok())
-                       ).pack(side="left", padx=(0, 4))
-        self.buttons(ok_text="Apply")
+                       ).pack(side=START, padx=pad(0, 4))
+        self.buttons(ok_text=_("Apply"))
         e.bind("<Return>", lambda ev: self.ok())
         self.after(50, e.focus_set)
 
     def ok(self):
         try:
-            value = parse_float(self.var.get(), "Discount")
+            value = parse_float(self.var.get(), _("Discount"))
         except POSError as exc:
             messagebox.showwarning(self.title(), str(exc), parent=self)
             return
         if value < 0:
-            messagebox.showwarning(self.title(), "Discount cannot be negative.", parent=self)
+            messagebox.showwarning(self.title(), _("Discount cannot be negative."), parent=self)
             return
         amount = self.base * value / 100 if self.mode.get() == "percent" else value
         if amount > self.base + 0.001:
-            messagebox.showwarning(self.title(), "Discount is larger than the amount.", parent=self)
+            messagebox.showwarning(self.title(), _("Discount is larger than the amount."), parent=self)
             return
         self.result = money(amount)
         self.destroy()
@@ -559,18 +568,18 @@ class DiscountDialog(Dialog):
 
 class CustomerPicker(Dialog):
     def __init__(self, parent, app):
-        super().__init__(parent, "Select customer")
+        super().__init__(parent, _("Select customer"))
         self.app, self.db = app, app.db
         top = ttk.Frame(self.body)
         top.pack(fill="x")
-        self.search = SearchBar(top, self.reload, "name, phone or email", width=34)
-        self.search.pack(side="left", fill="x", expand=True)
-        ttk.Button(top, text="+ New customer", command=self.new).pack(side="right")
+        self.search = SearchBar(top, self.reload, _("name, phone or email"), width=34)
+        self.search.pack(side=START, fill="x", expand=True)
+        ttk.Button(top, text=_("+ New customer"), command=self.new).pack(side=END)
         self.table = DataTable(self.body, [
-            ("name", "Name", 220), ("phone", "Phone", 130), ("loyalty_points", "Points", -80),
-            ("balance", "Balance", -100, lambda v: f"{v:,.2f}")], height=12, on_double=self.choose)
+            ("name", _("Name"), 220), ("phone", _("Phone"), 130), ("loyalty_points", _("Points"), -80),
+            ("balance", _("Balance"), -100, lambda v: f"{v:,.2f}")], height=12, on_double=self.choose)
         self.table.pack(fill="both", expand=True, pady=10)
-        self.buttons(ok_text="Select")
+        self.buttons(ok_text=_("Select"))
         self.search.entry.bind("<Return>", lambda e: self.ok())
         self.search.entry.bind("<Down>", lambda e: (self.table.tree.focus_set(), self.table.select_first()))
         self.reload()
@@ -581,10 +590,10 @@ class CustomerPicker(Dialog):
         self.table.select_first()
 
     def new(self):
-        from .customers import CUSTOMER_FIELDS
+        from .customers import customer_fields
         initial = {"phone": self.search.get()} if self.search.get().replace("+", "").isdigit() else \
             {"name": self.search.get()}
-        res = ask_form(self, "New customer", CUSTOMER_FIELDS, initial)
+        res = ask_form(self, _("New customer"), customer_fields(), initial)
         if res:
             self.result = people.save_customer(self.db, res, user_id=self.app.user["id"])
             self.destroy()
@@ -601,7 +610,7 @@ class CustomerPicker(Dialog):
 
 class HeldPicker(Dialog):
     def __init__(self, parent, db, held):
-        super().__init__(parent, "Held sales")
+        super().__init__(parent, _("Held sales"))
         self.db = db
         rows = []
         for h in held:
@@ -610,17 +619,17 @@ class HeldPicker(Dialog):
                          "items": sum(l.qty for l in cart.lines), "user": h["user"],
                          "created_at": h["created_at"]})
         self.table = DataTable(self.body, [
-            ("label", "Label", 180), ("customer", "Customer", 160), ("items", "Items", -60),
-            ("user", "By", 90), ("created_at", "Held at", 160)], height=10, on_double=self.choose)
+            ("label", _("Label"), 180), ("customer", _("Customer"), 160), ("items", _("Items"), -60),
+            ("user", _("By"), 90), ("created_at", _("Held at"), 160)], height=10, on_double=self.choose)
         self.table.set_rows(rows)
         self.table.select_first()
         self.table.pack(fill="both", expand=True)
-        bar = self.buttons(ok_text="Resume")
-        ttk.Button(bar, text="Delete", style="Danger.TButton", command=self.delete).pack(side="left")
+        bar = self.buttons(ok_text=_("Resume"))
+        ttk.Button(bar, text=_("Delete"), style="Danger.TButton", command=self.delete).pack(side=START)
 
     def delete(self):
         row = self.table.selected()
-        if row and messagebox.askyesno("Delete", "Delete this held sale?", parent=self):
+        if row and messagebox.askyesno(_("Delete"), _("Delete this held sale?"), parent=self):
             sales.delete_held(self.db, row["id"])
             self.table.tree.delete(self.table.tree.selection())
 
@@ -638,7 +647,7 @@ class PaymentDialog(Dialog):
     """Collects one or more payments (split tender) for a total."""
 
     def __init__(self, parent, app, total, customer_id):
-        super().__init__(parent, "Payment")
+        super().__init__(parent, _("Payment"))
         self.db = app.db
         self.settings = self.db.get_settings()
         self.sym = self.settings.get("currency_symbol", "$")
@@ -651,11 +660,12 @@ class PaymentDialog(Dialog):
 
         top = ttk.Frame(self.body, style="Panel.TFrame", padding=12)
         top.pack(fill="x")
-        ttk.Label(top, text="Amount due", style="CardTitle.TLabel").pack(anchor="w")
-        ttk.Label(top, text=fmt_money(total, self.sym), style="Total.TLabel").pack(anchor="w")
+        ttk.Label(top, text=_("Amount due"), style="CardTitle.TLabel").pack(anchor=W)
+        ttk.Label(top, text=fmt_money(total, self.sym), style="Total.TLabel").pack(anchor=W)
         if self.show_alt:
-            ttk.Label(top, text=f"{self.alt_code} {total * self.rate:,.0f}   (rate {self.rate:,.0f})",
-                      style="CardTitle.TLabel", font=(FONT_FAMILY, 13)).pack(anchor="w")
+            ttk.Label(top, text=_("{currency} {amount}   (rate {rate})").format(
+                currency=self.alt_code, amount=f"{total * self.rate:,.0f}", rate=f"{self.rate:,.0f}"),
+                style="CardTitle.TLabel", font=(FONT_FAMILY, 13)).pack(anchor=W)
 
         methods = [m for m in sales.payment_methods(self.settings)
                    if m not in ("Account", "Points") or self.customer]
@@ -663,48 +673,52 @@ class PaymentDialog(Dialog):
         mf = FlowFrame(self.body, gap=12, height=28)  # wraps when the shop has many methods
         mf.pack(fill="x", pady=(12, 4))
         for m in methods:
-            ttk.Radiobutton(mf, text=m, variable=self.method, value=m, command=self._method_changed)
+            ttk.Radiobutton(mf, text=tr_value(m), variable=self.method, value=m,
+                            command=self._method_changed)
         if self.customer:
             pv = setting_float(self.settings, "loyalty_point_value")
-            ttk.Label(self.body, style="Muted.TLabel",
-                      text=f"{self.customer['name']}: {self.customer['loyalty_points']} points "
-                           f"(worth {fmt_money(self.customer['loyalty_points'] * pv, self.sym)}), "
-                           f"account balance {fmt_money(self.customer['balance'], self.sym)}").pack(anchor="w")
+            ttk.Label(self.body, style="Muted.TLabel", text=_(
+                "{name}: {points} points (worth {worth}), account balance {balance}").format(
+                name=self.customer["name"], points=self.customer["loyalty_points"],
+                worth=fmt_money(self.customer["loyalty_points"] * pv, self.sym),
+                balance=fmt_money(self.customer["balance"], self.sym))).pack(anchor=W)
 
         entry_row = ttk.Frame(self.body)
         entry_row.pack(fill="x", pady=6)
-        ttk.Label(entry_row, text=f"Amount ({self.sym})").pack(side="left")
+        ttk.Label(entry_row, text=_("Amount ({symbol})").format(symbol=self.sym)).pack(side=START)
         self.amount = tk.StringVar()
         self.amount_entry = ttk.Entry(entry_row, textvariable=self.amount, font=(FONT_FAMILY, 16), width=12)
-        self.amount_entry.pack(side="left", padx=8)
-        ttk.Label(entry_row, text="Ref").pack(side="left")
+        self.amount_entry.pack(side=START, padx=8)
+        ttk.Label(entry_row, text=_("Ref")).pack(side=START)
         self.ref = tk.StringVar()
-        ttk.Entry(entry_row, textvariable=self.ref, width=14).pack(side="left", padx=6)
-        ttk.Button(entry_row, text="Add payment", style="Accent.TButton", command=self.add_payment).pack(
-            side="left")
+        ttk.Entry(entry_row, textvariable=self.ref, width=14).pack(side=START, padx=6)
+        ttk.Button(entry_row, text=_("Add payment"), style="Accent.TButton", command=self.add_payment).pack(
+            side=START)
         self.amount_entry.bind("<Return>", lambda e: self.add_payment())
 
         if self.show_alt:
             alt_row = ttk.Frame(self.body)
             alt_row.pack(fill="x", pady=4)
-            ttk.Label(alt_row, text=f"Cash in {self.alt_code}").pack(side="left")
+            ttk.Label(alt_row, text=_("Cash in {currency}").format(currency=self.alt_code)).pack(side=START)
             self.alt_amount = tk.StringVar()
             ae = ttk.Entry(alt_row, textvariable=self.alt_amount, font=(FONT_FAMILY, 14), width=14)
-            ae.pack(side="left", padx=8)
-            ttk.Button(alt_row, text=f"Add {self.alt_code} cash", command=self.add_alt).pack(side="left")
+            ae.pack(side=START, padx=8)
+            ttk.Button(alt_row, text=_("Add {currency} cash").format(currency=self.alt_code),
+                       command=self.add_alt).pack(side=START)
             ae.bind("<Return>", lambda e: self.add_alt())
 
         quick = ttk.Frame(self.body)
         quick.pack(fill="x", pady=6)
-        ttk.Button(quick, text="Exact amount", command=self.exact).pack(side="left", padx=(0, 4))
+        ttk.Button(quick, text=_("Exact amount"), command=self.exact).pack(side=START, padx=pad(0, 4))
         for note in (5, 10, 20, 50, 100):
             ttk.Button(quick, text=f"{self.sym}{note}",
-                       command=lambda n=note: self._quick_cash(n)).pack(side="left", padx=(0, 4))
+                       command=lambda n=note: self._quick_cash(n)).pack(side=START, padx=pad(0, 4))
 
-        self.list = DataTable(self.body, [("method", "Method", 160), ("reference", "Reference", 180),
-                                          ("amount", "Amount", -110, lambda v: f"{v:,.2f}")], height=4)
+        self.list = DataTable(self.body, [("method", _("Method"), 160, tr_value),
+                                          ("reference", _("Reference"), 180),
+                                          ("amount", _("Amount"), -110, lambda v: f"{v:,.2f}")], height=4)
         self.list.pack(fill="both", expand=True, pady=6)
-        ttk.Button(self.body, text="Remove selected payment", command=self.remove).pack(anchor="w")
+        ttk.Button(self.body, text=_("Remove selected payment"), command=self.remove).pack(anchor=W)
 
         self.status = ttk.Label(self.body, text="", font=(FONT_FAMILY, 16, "bold"))
         self.status.pack(anchor="e", pady=(8, 0))
@@ -713,9 +727,9 @@ class PaymentDialog(Dialog):
 
         bar = ttk.Frame(self.body)
         bar.pack(fill="x", pady=(12, 0))
-        ttk.Button(bar, text="Cancel", command=self.cancel).pack(side="right", padx=(8, 0))
-        self.complete_btn = ttk.Button(bar, text="✔ Complete sale", style="Pay.TButton", command=self.ok)
-        self.complete_btn.pack(side="right")
+        ttk.Button(bar, text=_("Cancel"), command=self.cancel).pack(side=END, padx=pad(8, 0))
+        self.complete_btn = ttk.Button(bar, text=_("✔ Complete sale"), style="Pay.TButton", command=self.ok)
+        self.complete_btn.pack(side=END)
         self.bind("<F12>", lambda e: self.ok())
         self.update_status()
         self.after(50, self.amount_entry.focus_set)
@@ -739,12 +753,16 @@ class PaymentDialog(Dialog):
     def update_status(self):
         rem = self.remaining()
         if rem > 0:
-            self.status.configure(text=f"Remaining: {fmt_money(rem, self.sym)}", foreground=COLORS["danger"])
+            self.status.configure(text=_("Remaining: {amount}").format(amount=fmt_money(rem, self.sym)),
+                                  foreground=COLORS["danger"])
             alt = f"{self.alt_code} {rem * self.rate:,.0f}" if self.show_alt else ""
             self.complete_btn.state(["disabled"])
         else:
-            self.status.configure(text=f"Change: {fmt_money(-rem, self.sym)}", foreground=COLORS["success"])
-            alt = f"Change in {self.alt_code}: {max(0.0, -rem) * self.rate:,.0f}" if self.show_alt else ""
+            self.status.configure(text=_("Change: {amount}").format(amount=fmt_money(-rem, self.sym)),
+                                  foreground=COLORS["success"])
+            alt = (_("Change in {currency}: {amount}").format(
+                currency=self.alt_code, amount=f"{max(0.0, -rem) * self.rate:,.0f}")
+                if self.show_alt else "")
             self.complete_btn.state(["!disabled"])
         self.alt_status.configure(text=alt)
         self.list.set_rows([dict(p, id=i) for i, p in enumerate(self.payments)])
@@ -752,9 +770,9 @@ class PaymentDialog(Dialog):
     def add_payment(self, method=None, amount=None, ref=None):
         method = method or self.method.get()
         try:
-            amount = money(parse_float(self.amount.get(), "Amount")) if amount is None else money(amount)
+            amount = money(parse_float(self.amount.get(), _("Amount"))) if amount is None else money(amount)
         except POSError as exc:
-            messagebox.showwarning("Payment", str(exc), parent=self)
+            messagebox.showwarning(_("Payment"), str(exc), parent=self)
             return
         if amount <= 0:
             if self.remaining() <= 0:
@@ -762,8 +780,8 @@ class PaymentDialog(Dialog):
                 return
             amount = self.remaining()
         if method != "Cash" and amount > self.remaining() + 0.001:
-            messagebox.showwarning("Payment", f"{method} cannot be more than the remaining amount.",
-                                   parent=self)
+            messagebox.showwarning(_("Payment"), _("{method} cannot be more than the remaining amount.").format(
+                method=tr_value(method)), parent=self)
             return
         self.payments.append({"method": method, "amount": amount,
                               "reference": self.ref.get().strip() if ref is None else ref})
@@ -775,9 +793,9 @@ class PaymentDialog(Dialog):
 
     def add_alt(self):
         try:
-            value = parse_float(self.alt_amount.get(), "Amount")
+            value = parse_float(self.alt_amount.get(), _("Amount"))
         except POSError as exc:
-            messagebox.showwarning("Payment", str(exc), parent=self)
+            messagebox.showwarning(_("Payment"), str(exc), parent=self)
             return
         if value <= 0:
             return
@@ -804,7 +822,7 @@ class PaymentDialog(Dialog):
             if self.remaining() > 0:
                 return
         if self.remaining() > 0.001:
-            messagebox.showwarning("Payment", "The full amount has not been paid yet.", parent=self)
+            messagebox.showwarning(_("Payment"), _("The full amount has not been paid yet."), parent=self)
             return
         self.result = self.payments
         self.destroy()
