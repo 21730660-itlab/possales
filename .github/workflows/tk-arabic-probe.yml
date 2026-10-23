@@ -1,0 +1,14 @@
+name: Tk Arabic probe
+on:
+  push:
+    paths: ["tools/tk_arabic_probe.py", ".github/workflows/tk-arabic-probe.yml"]
+jobs:
+  probe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pillow
+      - run: python tools/tk_arabic_probe.py
