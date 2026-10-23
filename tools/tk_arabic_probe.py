@@ -1,32 +1,29 @@
-"""Windows check: does Tk draw Arabic shaped and right-to-left? Saves screenshots/tk_probe.png."""
+"""Windows check: which way of marking text direction makes mixed Arabic/number text read right?
+
+Saves screenshots/tk_probe.png.
+"""
+import os
 import tkinter as tk
-from tkinter import ttk
 
 from PIL import ImageGrab
 
+SAMPLES = ["المجموع الفرعي: $224.22 (11%)", "الباقي 3.99 دولار - Mixed", "فقط 5 من 'USB-C cable' في المخزون."]
+VARIANTS = [("plain", lambda s: s), ("RLM", lambda s: "‏" + s),
+            ("RLE..PDF", lambda s: "‫" + s + "‬"), ("RLI..PDI", lambda s: "⁧" + s + "⁩")]
+
 root = tk.Tk()
-root.geometry("700x330+40+40")
+root.geometry("760x560+40+40")
 root.configure(bg="white")
-f = ("Segoe UI", 14)
-tk.Label(root, text="مرحباً بكم في نظام المتجر", font=("Segoe UI", 20, "bold"), bg="white").pack(anchor="e", padx=10)
-tk.Label(root, text="المجموع الفرعي: $224.22 (11%)", font=f, bg="white").pack(anchor="e", padx=10)
-tk.Label(root, text="Mixed: الباقي 3.99 دولار", font=f, bg="white").pack(anchor="e", padx=10)
-ttk.Button(root, text="إتمام البيع").pack(anchor="e", padx=10, pady=4)
-e = ttk.Entry(root, font=f, justify="right")
-e.insert(0, "سماعة بلوتوث")
-e.pack(anchor="e", padx=10, fill="x")
-t = ttk.Treeview(root, columns=("a", "b"), show="headings", height=2)
-t.heading("a", text="المنتج")
-t.heading("b", text="السعر")
-t.insert("", "end", values=("شاحن سريع", "15.00"))
-t.pack(fill="x", padx=10, pady=6)
+for name, fn in VARIANTS:
+    tk.Label(root, text=name, font=("Segoe UI", 10, "bold"), bg="#ddd").pack(fill="x")
+    for s in SAMPLES:
+        tk.Label(root, text=fn(s), font=("Segoe UI", 13), bg="white").pack(anchor="e", padx=10)
 root.update()
 root.after(1500, root.quit)
 root.mainloop()
 root.update()
 x, y = root.winfo_rootx(), root.winfo_rooty()
 img = ImageGrab.grab((x, y, x + root.winfo_width(), y + root.winfo_height()))
-import os
 os.makedirs("screenshots", exist_ok=True)
 img.save("screenshots/tk_probe.png")
 print("TK", root.tk.call("info", "patchlevel"))
