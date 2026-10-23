@@ -72,28 +72,42 @@ class Receipt:
             return label
         if self.lang == "ar":
             return arabic
-        return f"{label} {arabic}"
+        # Arabic first: an English word after it keeps the line's left-to-right shape when printed.
+        return f"{arabic} {label}"
 
     def center(self, text: str = ""):
         for part in str(text).splitlines() or [""]:
             self.lines.append(part.strip()[:self.width].center(self.width).rstrip())
+
+    @property
+    def rtl(self) -> bool:
+        return self.lang == "ar"
 
     def text(self, text: str = ""):
         for part in str(text).splitlines() or [""]:
             while len(part) > self.width:
                 cut = part.rfind(" ", 0, self.width)
                 cut = cut if cut > self.width // 2 else self.width
-                self.lines.append(part[:cut].rstrip())
+                self._add(part[:cut].rstrip())
                 part = part[cut:].lstrip()
-            self.lines.append(part)
+            self._add(part)
+
+    def _add(self, line: str):
+        self.lines.append(line.rjust(self.width) if self.rtl and line.strip() else line)
 
     def pair(self, left: str, right: str = ""):
+        """A label and a value on one line (the value at the end of the line)."""
         left, right = str(left), str(right)
         space = self.width - len(right) - 1
         if len(left) > space:
             self.text(left)
             left = ""
-        self.lines.append(f"{left:<{space}} {right}"[:self.width])
+        if self.rtl:
+            # Arabic receipt: the label sits at the right edge and the value at the left. Written in
+            # this order, Windows' text-direction rules print it that way (label + amount would swap).
+            self.lines.append(f"{right} {left.strip():>{space}}"[:self.width])
+        else:
+            self.lines.append(f"{left:<{space}} {right}"[:self.width])
 
     def rule(self, char: str = "-"):
         self.lines.append(char * self.width)
@@ -173,16 +187,16 @@ def sale_receipt(db: Database, sale_id: int, copy: bool = False) -> str:
         if item["discount"]:
             r.pair(f"  {t('Discount')}", f"-{money(item['discount']):,.2f}")
         if item["serial_no"]:
-            r.text(f"  {t('S/N')}: {item['serial_no']}")
+            r.pair(f"  {t('S/N')}:", item["serial_no"])
         if item["warranty_until"]:
-            r.text(f"  {t('Warranty until')}: {item['warranty_until']}")
+            r.pair(f"  {t('Warranty until')}:", item["warranty_until"])
     r.rule()
     r.pair(t("Subtotal"), fmt(sale["subtotal"], settings))
     if sale["discount_total"]:
         r.pair(t("Discount"), "-" + fmt(sale["discount_total"], settings))
     tax_name = settings.get("tax_name", "Tax")
     if r.lang != "en":
-        tax_name = f"{tax_name} {ARABIC['Tax']}" if r.lang == "both" else ARABIC["Tax"]
+        tax_name = f"{ARABIC['Tax']} {tax_name}" if r.lang == "both" else ARABIC["Tax"]
     r.pair(f"{tax_name} ({setting_float(settings, 'tax_rate'):g}%)", fmt(sale["tax_total"], settings))
     r.rule("=")
     r.pair(t("TOTAL"), fmt(sale["total"], settings))
@@ -238,7 +252,7 @@ def return_receipt(db: Database, return_id: int) -> str:
         r.text(item["name"])
         r.pair(f"  {t('Qty')} {item['qty']}", fmt(item["amount"], settings))
         if item["serial_no"]:
-            r.text(f"  {t('S/N')}: {item['serial_no']}")
+            r.pair(f"  {t('S/N')}:", item["serial_no"])
     r.rule()
     r.pair(t("REFUND TOTAL"), fmt(ret["total"], settings))
     r.pair(t("Refund method"), t(ret["refund_method"]))

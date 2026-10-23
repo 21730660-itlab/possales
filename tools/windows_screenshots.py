@@ -84,6 +84,16 @@ def main(out_dir: str):
     snap("receipt", preview)
     preview.destroy()
     a.destroy()
+    if sys.platform.startswith("win"):
+        # Windows prints receipts through Notepad, so show the receipt file the way Notepad lays it out.
+        import subprocess
+        import time
+        path = receipts.save_text(receipts.sale_receipt(db, sale_id), "screenshot_receipt")
+        notepad = subprocess.Popen(["notepad.exe", path])
+        time.sleep(4)
+        ImageGrab.grab().save(os.path.join(out_dir, f"{prefix}_notepad_receipt.png"))
+        notepad.kill()
+        print("saved notepad_receipt")
 
 
 if __name__ == "__main__":

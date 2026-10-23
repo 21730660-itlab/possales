@@ -7,6 +7,7 @@ must be chosen before the screens are imported (see main.py).
 """
 from __future__ import annotations
 
+import re
 import sys
 import tkinter as tk
 import tkinter.font as tkfont
@@ -22,6 +23,7 @@ FONT_FAMILY = "Segoe UI" if IS_WIN else "DejaVu Sans"
 MONO_FAMILY = "Consolas" if IS_WIN else "DejaVu Sans Mono"
 
 RTL = is_rtl()
+ARABIC_CHARS = re.compile("[\u0600-\u06ff]")
 START, END = ("right", "left") if RTL else ("left", "right")
 W, E = ("e", "w") if RTL else ("w", "e")
 NW = "ne" if RTL else "nw"
@@ -408,10 +410,13 @@ class TextPreview(Dialog):
 
     def __init__(self, parent, title, text, on_print=None, width=48):
         super().__init__(parent, title)
-        box = tk.Text(self.body, width=width, height=min(36, text.count("\n") + 2),
-                      font=(MONO_FAMILY, 11), relief="solid", borderwidth=1)
-        box.insert("1.0", text)
-        box.configure(state="disabled")
+        if ARABIC_CHARS.search(text):
+            box = self._line_canvas(text, width)
+        else:
+            box = tk.Text(self.body, width=width, height=min(36, text.count("\n") + 2),
+                          font=(MONO_FAMILY, 11), relief="solid", borderwidth=1)
+            box.insert("1.0", text)
+            box.configure(state="disabled")
         ys = ttk.Scrollbar(self.body, orient="vertical", command=box.yview)
         box.configure(yscrollcommand=ys.set)
         bar = ttk.Frame(self.body)
@@ -428,6 +433,20 @@ class TextPreview(Dialog):
                                          parent=self)
             ttk.Button(bar, text=_("🖨 Print"), style="Accent.TButton", command=do_print).pack(side=END)
         self.bind("<Return>", lambda e: self.cancel())
+
+    def _line_canvas(self, text, width):
+        """Draw each line as one piece. The Text widget lays Arabic out word by word, which
+        reverses the word order on Windows; whole lines are shaped like the printed receipt."""
+        font = tkfont.Font(family=MONO_FAMILY, size=11)
+        line_h = font.metrics("linespace") + 2
+        lines = text.split("\n")
+        canvas = tk.Canvas(self.body, width=font.measure("0") * width + 12,
+                           height=min(36, len(lines) + 1) * line_h, bg="white",
+                           highlightthickness=1, highlightbackground="#999")
+        for i, line in enumerate(lines):
+            canvas.create_text(6, 4 + i * line_h, text=line, anchor="nw", font=font)
+        canvas.configure(scrollregion=(0, 0, 0, len(lines) * line_h + 8))
+        return canvas
 
 
 class ManagerOverride(Dialog):
