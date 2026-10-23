@@ -21,6 +21,7 @@ from ..services import auth
 IS_WIN = sys.platform.startswith("win")
 FONT_FAMILY = "Segoe UI" if IS_WIN else "DejaVu Sans"
 MONO_FAMILY = "Consolas" if IS_WIN else "DejaVu Sans Mono"
+ARABIC_MONO_FAMILY = "Courier New" if IS_WIN else MONO_FAMILY  # fixed width and has Arabic letters
 
 RTL = is_rtl()
 ARABIC_CHARS = re.compile("[\u0600-\u06ff]")
@@ -435,9 +436,12 @@ class TextPreview(Dialog):
         self.bind("<Return>", lambda e: self.cancel())
 
     def _line_canvas(self, text, width):
-        """Draw each line as one piece. The Text widget lays Arabic out word by word, which
-        reverses the word order on Windows; whole lines are shaped like the printed receipt."""
-        font = tkfont.Font(family=MONO_FAMILY, size=11)
+        """Draw each line as one piece, like the printed receipt.
+
+        The font must contain Arabic letters: with Consolas, Tk switches to a fallback font at
+        every space and draws Arabic word by word, which reverses the word order on Windows.
+        """
+        font = tkfont.Font(family=ARABIC_MONO_FAMILY, size=11)
         line_h = font.metrics("linespace") + 2
         lines = text.split("\n")
         canvas = tk.Canvas(self.body, width=font.measure("0") * width + 12,
