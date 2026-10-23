@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -45,10 +46,12 @@ def main(out_dir: str):
     a.geometry("1366x768+0+0")
 
     def snap(name, widget=None):
-        for _ in range(5):
+        w = widget or a
+        w.lift()
+        for _ in range(10):  # let Windows draw the window before grabbing the screen
             a.update()
             a.update_idletasks()
-        w = widget or a
+            time.sleep(0.1)
         x, y = w.winfo_rootx(), w.winfo_rooty()
         img = ImageGrab.grab((x, y, x + w.winfo_width(), y + w.winfo_height()))
         img.save(os.path.join(out_dir, f"{prefix}_{name}.png"))
@@ -87,7 +90,6 @@ def main(out_dir: str):
     if sys.platform.startswith("win"):
         # Windows prints receipts through Notepad, so show the receipt file the way Notepad lays it out.
         import subprocess
-        import time
         path = receipts.save_text(receipts.sale_receipt(db, sale_id), "screenshot_receipt")
         notepad = subprocess.Popen(["notepad.exe", path])
         time.sleep(4)
